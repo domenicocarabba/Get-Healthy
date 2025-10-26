@@ -4,7 +4,7 @@ export default function Footer() {
       <p className="text-sm">
         Contact:{" "}
         <a href="mailto:get@healthy.it" className="text-white hover:underline">
-          get@gethealthy.it
+          get@healthy.it
         </a>
       </p>
       <p className="text-sm mt-2">© {new Date().getFullYear()} Get Healthy — All rights reserved</p>
