@@ -1,5 +1,6 @@
 import "./../styles/globals.css";
 import Footer from "../components/Footer";
+import CookieBanner from "@/components/CookieBanner";
 import NavBar from "../components/NavBar";
 
 export const metadata = {
@@ -24,6 +25,8 @@ export default function RootLayout({ children }) {
           <Footer />
         </div>
         <NavBar />
+        <CookieBanner />
+
       </body>
     </html>
   );
