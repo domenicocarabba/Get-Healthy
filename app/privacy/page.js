@@ -47,7 +47,6 @@ export default function PrivacyPage() {
       <h2>9. Modifiche</h2>
       <p>Aggiornamenti pubblicati su questa pagina.</p>
 
-      {/* 🟢 SEZIONE NUOVA */}
       <h2>10. Affiliazioni & Cookie</h2>
       <p>
         Get Healthy partecipa a programmi di affiliazione con piattaforme di delivery e brand
