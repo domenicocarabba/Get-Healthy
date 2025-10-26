@@ -1,3 +1,4 @@
+'use client';
 export default function HomePage() {
   return (
     <div className="bg-hero-gradient">
@@ -32,7 +33,7 @@ export default function HomePage() {
             <li>Ottieni un piano settimanale personalizzato con ricette.</li>
             <li>Scegli se cucinare o ordinare dagli shop partner.</li>
           </ol>
-          <form className="mt-6 grid sm:grid-cols-[1fr_1fr_auto] gap-3" onSubmit={(e)=>e.preventDefault()}>
+          <form className="mt-6 grid sm:grid-cols-[1fr_1fr_auto] gap-3" onSubmit={(e) => e.preventDefault()}>
             <input className="rounded-xl border border-slate-300 px-4 py-3" placeholder="La tua email" />
             <input className="rounded-xl border border-slate-300 px-4 py-3" placeholder="Obiettivo (dimagrire, energia…)" />
             <button className="btn btn-primary">Partecipa alla beta</button>
