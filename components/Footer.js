@@ -7,7 +7,7 @@ export default function Footer() {
           get@healthy.it
         </a>
       </p>
-      <p className="text-sm mt-2">© {new Date().getFullYear()} Get Healthy.it — All rights reserved</p>
+      <p className="text-sm mt-2">© {new Date().getFullYear()} Get Healthy — All rights reserved</p>
       <p className="text-xs mt-4 space-x-4">
         <a href="/privacy" className="hover:underline text-gray-300">Privacy</a>
         <span>•</span>
