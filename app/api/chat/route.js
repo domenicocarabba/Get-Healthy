@@ -28,39 +28,57 @@ export async function POST(req) {
             const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
             if (!key) return badRequest("Manca GOOGLE_GENERATIVE_AI_API_KEY.");
 
-            // ✅ REST API v1 (niente SDK)
-            const model = "gemini-1.5-flash-001"; // stabile; puoi provare anche "gemini-1.5-pro-001"
-            const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${key}`;
+            // REST API v1 (no SDK) + elenco modelli con fallback
+            const candidates = [
+                "gemini-1.5-flash",         // più comune
+                "gemini-1.5-flash-latest",
+                "gemini-1.5-pro",
+                "gemini-1.5-pro-latest",
+                "gemini-pro"                // legacy ma spesso sempre disponibile
+            ];
 
-            const r = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [{ text: prompt }],
-                        },
-                    ],
-                    generationConfig: {
-                        temperature: 0.4,
-                    },
-                }),
-            });
+            const headers = { "Content-Type": "application/json" };
 
-            if (!r.ok) {
-                const body = await r.text();
-                console.error("Gemini REST error:", r.status, body);
-                return upstreamError(`Gemini error ${r.status}`);
+            for (const model of candidates) {
+                const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${key}`;
+                const body = JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.4 }
+                });
+
+                try {
+                    const r = await fetch(url, { method: "POST", headers, body });
+                    if (!r.ok) {
+                        // Se è 404, proviamo il prossimo modello; altri errori li esponiamo
+                        if (r.status === 404) {
+                            const t = await r.text().catch(() => "");
+                            console.warn(`Gemini ${model} => 404. Provo il prossimo. Dettagli:`, t);
+                            continue;
+                        }
+                        const t = await r.text().catch(() => "");
+                        console.error(`Gemini ${model} error ${r.status}:`, t);
+                        return upstreamError(`Gemini error ${r.status}`);
+                    }
+
+                    const data = await r.json();
+                    const text =
+                        data?.candidates?.[0]?.content?.parts?.[0]?.text ??
+                        data?.candidates?.[0]?.output ??
+                        "…";
+                    return NextResponse.json({ result: text, provider: `gemini:${model}` });
+                } catch (e) {
+                    // errore di rete: prova il prossimo
+                    console.warn(`Gemini ${model} network error:`, e?.message);
+                    continue;
+                }
             }
 
-            const data = await r.json();
-            const text =
-                data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-                data?.candidates?.[0]?.output || // alcuni backend
-                "…";
-            return NextResponse.json({ result: text });
+            // Se nessun modello ha risposto
+            return upstreamError(
+                "Gemini non disponibile con i modelli standard (flash/pro). Verifica la chiave o abilita i modelli in AI Studio."
+            );
         }
+
 
         if (plan === "plus") {
             // ===== Perplexity =====
