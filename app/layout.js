@@ -13,20 +13,28 @@ export const metadata = {
     siteName: "Get Healthy",
     type: "website",
   },
-  twitter: { card: "summary_large_image", title: "Get Healthy", description: "Mangia sano, con la tua AI personale." }
+  twitter: {
+    card: "summary_large_image",
+    title: "Get Healthy",
+    description: "Mangia sano, con la tua AI personale.",
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="it">
-      <body>
-        <div className="min-h-screen flex flex-col">
+      <body className="bg-white text-gray-900">
+        {/* ✅ Navbar in alto */}
+        <NavBar />
+
+        {/* ✅ Corpo principale del sito */}
+        <div className="min-h-screen flex flex-col pt-20">
           <main className="flex-1 pb-24">{children}</main>
           <Footer />
         </div>
-        <NavBar />
-        <CookieBanner />
 
+        {/* ✅ Cookie banner sempre visibile */}
+        <CookieBanner />
       </body>
     </html>
   );

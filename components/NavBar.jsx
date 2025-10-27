@@ -1,20 +1,20 @@
+"use client";
+import Link from "next/link";
+
 export default function NavBar() {
-  const items = [
-    { href: "/", label: "Home" },
-    { href: "#features", label: "Ricette" },
-    { href: "#start", label: "Inizia" },
-  ];
   return (
-    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-      <ul className="flex gap-2 bg-white/90 backdrop-blur border border-slate-200 rounded-2xl shadow-lg px-3 py-2">
-        {items.map((it) => (
-          <li key={it.label}>
-            <a href={it.href} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-100">
-              {it.label}
-            </a>
-          </li>
-        ))}
-      </ul>
+    <nav className="fixed top-0 left-0 w-full bg-white/90 backdrop-blur-md shadow-sm z-50">
+      <div className="max-w-6xl mx-auto flex justify-between items-center px-6 py-4">
+        <Link href="/" className="text-xl font-semibold text-green-600">
+          Get Healthy
+        </Link>
+        <div className="flex space-x-6 text-gray-700 font-medium">
+          <Link href="/" className="hover:text-green-600 transition">Home</Link>
+          <Link href="/ricette" className="hover:text-green-600 transition">Ricette</Link>
+          <Link href="/ai" className="hover:text-green-600 transition">AI</Link>
+          <Link href="/pricing" className="hover:text-green-600 transition">Piani</Link>
+        </div>
+      </div>
     </nav>
   );
 }
