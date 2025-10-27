@@ -26,32 +26,41 @@ export async function POST(req) {
 
         if (plan === "base") {
             const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-            if (!key)
-                return badRequest(
-                    "Manca GOOGLE_GENERATIVE_AI_API_KEY. Aggiungila in .env.local o su Vercel."
-                );
+            if (!key) return badRequest("Manca GOOGLE_GENERATIVE_AI_API_KEY.");
 
-            const { GoogleGenerativeAI } = await import("@google/generative-ai");
-            const genAI = new GoogleGenerativeAI(key);
+            // ✅ REST API v1 (niente SDK)
+            const model = "gemini-1.5-flash-001"; // stabile; puoi provare anche "gemini-1.5-pro-001"
+            const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${key}`;
 
-            // ✅ Usa i nuovi modelli compatibili con la versione v1
-            const modelName = "gemini-1.5-flash-001";
+            const r = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [{ text: prompt }],
+                        },
+                    ],
+                    generationConfig: {
+                        temperature: 0.4,
+                    },
+                }),
+            });
 
-            try {
-                const model = genAI.getGenerativeModel({ model: modelName });
-                const result = await model.generateContent(prompt);
-                const text = result.response.text();
-                return NextResponse.json({ result: text });
-            } catch (err) {
-                console.warn("Errore Gemini, fallback su pro:", err.message);
-
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-001" });
-                const result = await model.generateContent(prompt);
-                const text = result.response.text();
-                return NextResponse.json({ result: text });
+            if (!r.ok) {
+                const body = await r.text();
+                console.error("Gemini REST error:", r.status, body);
+                return upstreamError(`Gemini error ${r.status}`);
             }
-        }
 
+            const data = await r.json();
+            const text =
+                data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+                data?.candidates?.[0]?.output || // alcuni backend
+                "…";
+            return NextResponse.json({ result: text });
+        }
 
         if (plan === "plus") {
             // ===== Perplexity =====
