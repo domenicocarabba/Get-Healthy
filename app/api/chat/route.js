@@ -25,19 +25,30 @@ export async function POST(req) {
             "base";
 
         if (plan === "base") {
-            // ===== Gemini =====
             const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-            if (!key)
-                return badRequest(
-                    "Manca GOOGLE_GENERATIVE_AI_API_KEY. Aggiungila in .env.local o su Vercel."
-                );
+            if (!key) return badRequest("Manca GOOGLE_GENERATIVE_AI_API_KEY. Aggiungila in .env.local o su Vercel.");
+
             const { GoogleGenerativeAI } = await import("@google/generative-ai");
             const genAI = new GoogleGenerativeAI(key);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const r = await model.generateContent(prompt);
-            const text = r?.response?.text?.() || "…";
-            return NextResponse.json({ result: text });
+
+            // usa -latest e prevedi un fallback
+            const preferredModel = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
+            let model = genAI.getGenerativeModel({ model: preferredModel });
+
+            try {
+                const r = await model.generateContent(prompt);
+                const text = r?.response?.text?.() || "…";
+                return NextResponse.json({ result: text });
+            } catch (err) {
+                // Se il modello non è supportato (404), prova il fallback pro
+                console.warn("Gemini primary model failed, fallback:", err?.message);
+                const fallback = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+                const r2 = await fallback.generateContent(prompt);
+                const text2 = r2?.response?.text?.() || "…";
+                return NextResponse.json({ result: text2 });
+            }
         }
+
 
         if (plan === "plus") {
             // ===== Perplexity =====
