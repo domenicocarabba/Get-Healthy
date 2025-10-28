@@ -19,8 +19,11 @@
     "stripe": "^19.1.0"
   },
   "devDependencies": {
+    "@types/node": "24.9.2",
+    "@types/react": "19.2.2",
     "autoprefixer": "10.4.19",
     "postcss": "8.4.38",
-    "tailwindcss": "3.4.10"
+    "tailwindcss": "3.4.10",
+    "typescript": "5.9.3"
   }
 }
