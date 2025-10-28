@@ -1,7 +1,12 @@
-// /lib/ai/router.ts
+// lib/ai/router.ts
 import { askGemini, askOpenAI, askPerplexity } from "./providers";
 
 export type Plan = "base" | "plus" | "pro";
+
+// Unisci system + prompt in un'unica stringa per i provider
+function buildPrompt(system: string, userPrompt: string) {
+    return `${system}\n\nUtente: ${userPrompt}`;
+}
 
 export async function routeByPlan({
     plan,
@@ -13,27 +18,26 @@ export async function routeByPlan({
     const system =
         "Rispondi in modo chiaro, utile e conciso. Se chiedono consigli su salute/nutrizione, spiega che non sostituisci un professionista sanitario.";
 
+    const full = buildPrompt(system, prompt);
+
     if (plan === "base") {
         // Solo Gemini
-        return await askGemini({ prompt, system });
+        return await askGemini(full);
     }
 
     if (plan === "plus") {
-        // Heuristics: se la domanda sembra “di attualità/ricerca”, usa Perplexity altrimenti Gemini
+        // Se sembra richiesta “web/attualità”, usa Perplexity; altrimenti Gemini
         const needsWeb = /news|oggi|attual|fonte|link|dove|prezzo|disponibile/i.test(prompt);
-        if (needsWeb) return await askPerplexity({ prompt, system });
-        return await askGemini({ prompt, system });
+        return needsWeb ? await askPerplexity(full) : await askGemini(full);
     }
 
-    // pro → scegli il migliore o fai “ensemble” semplice
-    // Esempio: prova Perplexity per info web; se non matcha, fallback a OpenAI; altrimenti Gemini.
+    // PRO: preferisci Perplexity per info web; altrimenti OpenAI; fallback Gemini
     const needsWeb = /news|oggi|attual|fonte|link|dove|prezzo|disponibile|ricerca/i.test(prompt);
-    if (needsWeb) return await askPerplexity({ prompt, system });
+    if (needsWeb) return await askPerplexity(full);
 
-    // per tutto il resto preferisci OpenAI, fallback Gemini
     try {
-        return await askOpenAI({ prompt, system });
+        return await askOpenAI(full);
     } catch {
-        return await askGemini({ prompt, system });
+        return await askGemini(full);
     }
 }
