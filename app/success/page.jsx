@@ -22,7 +22,11 @@ export default function Page({ searchParams = {} }) {
                 </p>
                 <a
                     href="/"
-                    style={{ display: 'inline-block', marginTop: 24, textDecoration: 'underline' }}
+                    style={{
+                        display: 'inline-block',
+                        marginTop: 24,
+                        textDecoration: 'underline',
+                    }}
                 >
                     Torna alla Home
                 </a>

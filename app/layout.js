@@ -1,4 +1,5 @@
 import "./../styles/globals.css";
+import { Suspense } from "react";           // ✅ aggiunto per risolvere l’errore di useSearchParams
 import Footer from "../components/Footer";
 import CookieBanner from "../components/CookieBanner";
 import NavBar from "../components/NavBar";
@@ -29,7 +30,11 @@ export default function RootLayout({ children }) {
 
         {/* ✅ Corpo principale del sito */}
         <div className="min-h-screen flex flex-col pt-20">
-          <main className="flex-1 pb-24">{children}</main>
+          {/* ✅ Suspense globale per evitare errori con useSearchParams */}
+          <Suspense fallback={null}>
+            <main className="flex-1 pb-24">{children}</main>
+          </Suspense>
+
           <Footer />
         </div>
 
