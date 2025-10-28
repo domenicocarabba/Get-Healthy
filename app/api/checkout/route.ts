@@ -4,40 +4,39 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs"; // Stripe richiede Node runtime (non Edge)
 
-// Tipi utili
 type Plan = "base" | "plus" | "pro";
 type PriceMap = Record<Plan, string | undefined>;
 
-function j(obj: any, status = 200) {
+function j(obj: unknown, status = 200) {
     return NextResponse.json(obj, { status });
 }
 
 export async function POST(req: Request) {
     try {
         const body = await req.json().catch(() => ({}));
-        const rawPlan: string = (body?.plan || "").toLowerCase();
+        const rawPlan: string = String(body?.plan ?? "").toLowerCase();
         const plan: Plan = (["base", "plus", "pro"].includes(rawPlan) ? rawPlan : "base") as Plan;
 
         const SITE =
             process.env.NEXT_PUBLIC_SITE_URL ||
-            // fallback al dominio della richiesta (utile in preview/local)
+            // fallback all'origin della richiesta (utile in preview/local)
             new URL(req.url).origin;
 
-        // Se "base" è un piano gratuito → niente Stripe: porta direttamente a /success
+        // Piano base gratuito → salta Stripe
         if (plan === "base" && !process.env.STRIPE_PRICE_BASE) {
-            const url = `${SITE}/success?plan=base`;
-            return j({ url });
+            return j({ url: `${SITE}/success?plan=base` });
         }
 
         const key = process.env.STRIPE_SECRET_KEY;
         if (!key) return j({ error: "Missing STRIPE_SECRET_KEY" }, 500);
 
-        const stripe = new Stripe(key, { apiVersion: "2024-06-20" });
+        // ✅ Nessuna apiVersion: Stripe SDK usa quella pin-nata nel pacchetto
+        const stripe = new Stripe(key);
 
         const prices: PriceMap = {
-            base: process.env.STRIPE_PRICE_BASE, // opzionale (se vuoi far pagare anche base)
-            plus: process.env.STRIPE_PRICE_PLUS,
-            pro: process.env.STRIPE_PRICE_PRO,
+            base: process.env.STRIPE_PRICE_BASE,   // opzionale
+            plus: process.env.STRIPE_PRICE_PLUS,   // richiesto per plan=plus
+            pro: process.env.STRIPE_PRICE_PRO,     // richiesto per plan=pro
         };
 
         const priceId = prices[plan];
@@ -53,7 +52,7 @@ export async function POST(req: Request) {
         return j({ url: session.url });
     } catch (err: any) {
         console.error("Stripe checkout error:", err);
-        return j({ error: err?.message || "Internal error" }, 500);
+        return j({ error: err?.message ?? "Internal error" }, 500);
     }
 }
 
