@@ -1,3 +1,4 @@
+// app/pricing/page.jsx
 "use client";
 
 import Link from "next/link";
@@ -6,11 +7,9 @@ import { useRouter } from "next/navigation";
 export default function PricingPage() {
     const router = useRouter();
 
-    function choose(plan, target) {
-        try {
-            localStorage.setItem("gh_plan", plan);
-        } catch { }
-        if (target) router.push(target);
+    function choose(target) {
+        // ❌ NIENTE localStorage qui
+        router.push(target);
     }
 
     return (
@@ -33,7 +32,7 @@ export default function PricingPage() {
                         <li>• Limite richieste giornaliere</li>
                     </ul>
                     <button
-                        onClick={() => choose("base", "/ai")}
+                        onClick={() => choose("/ai?plan=base")}
                         className="w-full rounded-lg border px-4 py-2 hover:bg-gray-50"
                     >
                         Resta su Base
@@ -53,7 +52,7 @@ export default function PricingPage() {
                         <li>• Ricette e piani avanzati</li>
                     </ul>
                     <button
-                        onClick={() => choose("plus", "/checkout?plan=plus")}
+                        onClick={() => choose("/checkout?plan=plus")}
                         className="w-full rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700"
                     >
                         Attiva Plus
@@ -77,7 +76,7 @@ export default function PricingPage() {
                         <li>• Supporto fitness e piani personalizzati</li>
                     </ul>
                     <button
-                        onClick={() => choose("pro", "/checkout?plan=pro")}
+                        onClick={() => choose("/checkout?plan=pro")}
                         className="w-full rounded-lg bg-black text-white px-4 py-2 hover:bg-gray-900"
                     >
                         Attiva Pro

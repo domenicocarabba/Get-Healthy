@@ -2,7 +2,7 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs"; // Stripe richiede Node runtime (non Edge)
+export const runtime = "nodejs";
 
 type Plan = "base" | "plus" | "pro";
 type PriceMap = Record<Plan, string | undefined>;
@@ -19,7 +19,6 @@ export async function POST(req: Request) {
 
         const SITE =
             process.env.NEXT_PUBLIC_SITE_URL ||
-            // fallback all'origin della richiesta (utile in preview/local)
             new URL(req.url).origin;
 
         // Piano base gratuito → salta Stripe
@@ -30,23 +29,25 @@ export async function POST(req: Request) {
         const key = process.env.STRIPE_SECRET_KEY;
         if (!key) return j({ error: "Missing STRIPE_SECRET_KEY" }, 500);
 
-        // ✅ Nessuna apiVersion: Stripe SDK usa quella pin-nata nel pacchetto
         const stripe = new Stripe(key);
 
         const prices: PriceMap = {
-            base: process.env.STRIPE_PRICE_BASE,   // opzionale
-            plus: process.env.STRIPE_PRICE_PLUS,   // richiesto per plan=plus
-            pro: process.env.STRIPE_PRICE_PRO,     // richiesto per plan=pro
+            base: process.env.STRIPE_PRICE_BASE,  // opzionale
+            plus: process.env.STRIPE_PRICE_PLUS,  // richiesto per plan=plus
+            pro: process.env.STRIPE_PRICE_PRO,   // richiesto per plan=pro
         };
 
         const priceId = prices[plan];
         if (!priceId) return j({ error: `Invalid or missing price for plan: ${plan}` }, 400);
 
         const session = await stripe.checkout.sessions.create({
-            mode: "subscription", // usa "payment" se non vuoi abbonamenti
+            mode: "subscription",                       // usa "payment" se non vuoi abbonamenti
             line_items: [{ price: priceId, quantity: 1 }],
             success_url: `${SITE}/success?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${SITE}/pricing`,
+            // 👇 Aggiungiamo il piano nella sessione e nella subscription
+            metadata: { plan },
+            subscription_data: { metadata: { plan } },
         });
 
         return j({ url: session.url });
