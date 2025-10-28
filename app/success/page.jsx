@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'default-no-store';
 
-export default function Page({ searchParams }) {
-    const plan = (searchParams && searchParams.plan) ? searchParams.plan : 'base';
+/** @param {{ searchParams?: Record<string, string> }} props */
+export default function Page({ searchParams = {} }) {
+    const plan = searchParams.plan ?? 'base';
 
     return (
         <main>
