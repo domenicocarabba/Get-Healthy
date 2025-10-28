@@ -1,6 +1,16 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "paths": { "@/*": ["./*"] }
+    "paths": {
+      "@/*": [
+        "*"
+      ],
+      "@components/*": [
+        "components/*"
+      ],
+      "@data/*": [
+        "data/*"
+      ]
+    }
   }
 }
