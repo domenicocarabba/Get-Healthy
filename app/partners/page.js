@@ -1,7 +1,6 @@
 // app/partners/page.js
-import PartnerCard from "@/components/PartnerCard";
-import { partners } from "@/data/partners";
-
+import PartnerCard from "../../components/PartnerCard";
+import { partners } from "../../data/partners";
 export const metadata = {
     title: "Partner & Affiliazioni – Get Healthy",
     description:
