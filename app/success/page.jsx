@@ -1,17 +1,31 @@
-import { Suspense } from 'react';
-import SuccessClient from './SuccessClient';
-
-// imposta la pagina come dinamica (no prerender)
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'default-no-store';
 
 export default function Page({ searchParams }) {
-    // passiamo i searchParams dal server al client component
+    const plan = (searchParams && searchParams.plan) ? searchParams.plan : 'base';
+
     return (
         <main>
-            <Suspense fallback={<div style={{ textAlign: 'center', padding: '3rem' }}>Caricamento…</div>}>
-                <SuccessClient searchParams={searchParams} />
-            </Suspense>
+            <section
+                style={{
+                    maxWidth: 720,
+                    margin: '0 auto',
+                    padding: '3rem 1rem',
+                    textAlign: 'center',
+                }}
+            >
+                <h1>✅ Pagamento completato</h1>
+                <p>
+                    Hai attivato il piano: <strong>{plan}</strong>
+                </p>
+                <a
+                    href="/"
+                    style={{ display: 'inline-block', marginTop: 24, textDecoration: 'underline' }}
+                >
+                    Torna alla Home
+                </a>
+            </section>
         </main>
     );
 }
-
