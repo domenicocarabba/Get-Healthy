@@ -61,6 +61,14 @@ export default function AIPage() {
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
     }
 
+    // 👇 Mostra provider attivi per ogni piano
+    const activeProviders =
+        plan === "base"
+            ? "Gemini"
+            : plan === "plus"
+                ? "Gemini + ChatGPT"
+                : "Gemini + ChatGPT + Perplexity";
+
     return (
         <div className="min-h-screen">
             {/* ===== HERO fissa in cima ===== */}
@@ -155,21 +163,25 @@ export default function AIPage() {
                         Piano attivo:{" "}
                         <span className="font-semibold uppercase">{plan}</span>
                     </p>
+                    <p className="text-xs text-gray-400">
+                        Provider attivi: {activeProviders}
+                    </p>
                 </div>
 
                 {/* Banner upgrade se piano base */}
                 {plan === "base" && (
                     <div className="mb-6 rounded-lg border bg-white p-4">
                         <p className="text-sm text-gray-700">
-                            Con il piano <b>BASE</b> usi le funzionalità essenziali. Per
-                            Gemini+Perplexity o ChatGPT passa a{" "}
-                            <a href="/pricing" className="text-green-600 underline">
+                            Con il piano <b>BASE</b> usi solo <b>Gemini</b> (funzionalità essenziali).{" "}
+                            Con il piano{" "}
+                            <a href="/pricing" className="text-green-600 underline font-semibold">
                                 PLUS
                             </a>{" "}
-                            o{" "}
-                            <a href="/pricing" className="text-green-600 underline">
+                            usi <b>Gemini + ChatGPT</b>, e con il piano{" "}
+                            <a href="/pricing" className="text-green-600 underline font-semibold">
                                 PRO
-                            </a>.
+                            </a>{" "}
+                            hai accesso completo a <b>Gemini + ChatGPT + Perplexity</b>.
                         </p>
                     </div>
                 )}

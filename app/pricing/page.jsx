@@ -7,7 +7,6 @@ export default function PricingPage() {
     const router = useRouter();
 
     function choose(plan, target) {
-        // MOCK: finché non colleghi Stripe/Auth.
         try {
             localStorage.setItem("gh_plan", plan);
         } catch { }
@@ -49,11 +48,10 @@ export default function PricingPage() {
                     <h3 className="text-xl font-semibold mb-1">Plus</h3>
                     <p className="text-gray-500 mb-4">€9.90 / mese</p>
                     <ul className="text-sm space-y-2 mb-6">
-                        <li>• Gemini + Perplexity</li>
+                        <li>• Gemini + ChatGPT</li>
                         <li>• Più richieste e priorità</li>
                         <li>• Ricette e piani avanzati</li>
                     </ul>
-                    {/* In produzione: manda a Stripe Checkout */}
                     <button
                         onClick={() => choose("plus", "/checkout?plan=plus")}
                         className="w-full rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700"
@@ -73,9 +71,10 @@ export default function PricingPage() {
                     <h3 className="text-xl font-semibold mb-1">Pro</h3>
                     <p className="text-gray-500 mb-4">€19.90 / mese</p>
                     <ul className="text-sm space-y-2 mb-6">
-                        <li>• ChatGPT + Gemini + Perplexity</li>
+                        <li>• Gemini + ChatGPT + Perplexity</li>
                         <li>• Priorità massima</li>
                         <li>• Limiti elevati</li>
+                        <li>• Supporto fitness e piani personalizzati</li>
                     </ul>
                     <button
                         onClick={() => choose("pro", "/checkout?plan=pro")}
@@ -85,10 +84,6 @@ export default function PricingPage() {
                     </button>
                 </div>
             </div>
-
-            <p className="text-xs text-gray-500 text-center mt-6">
-                * I prezzi sono di esempio. In produzione collega Stripe e salva il piano nel profilo utente.
-            </p>
         </div>
     );
 }

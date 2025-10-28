@@ -1,178 +1,155 @@
 import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* ───────────────── helpers ───────────────── */
-function jsonOK(obj) { return NextResponse.json(obj); }
-function badRequest(msg) { return NextResponse.json({ error: msg }, { status: 400 }); }
-function upstreamError(msg, code = 502) { return NextResponse.json({ error: msg }, { status: code }); }
+/* ─────────── Helpers ─────────── */
+const ok = (obj) => NextResponse.json(obj);
+const bad = (msg) => NextResponse.json({ error: msg }, { status: 400 });
+const upstream = (msg, detail = "", status = 502) =>
+    NextResponse.json({ error: msg, detail }, { status });
 
-/* ───────────────── route ───────────────── */
+/* ─────────── Gemini (BASE) ─────────── */
+async function callGemini(prompt) {
+    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!key) throw new Error("Manca GOOGLE_GENERATIVE_AI_API_KEY.");
+
+    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    const genAI = new GoogleGenerativeAI(key);
+    const model = genAI.getGenerativeModel({ model: modelName });
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    return { provider: `gemini:${modelName}`, text };
+}
+
+/* ─────────── OpenAI (PLUS / PRO) ─────────── */
+async function callOpenAI(prompt) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error("Manca OPENAI_API_KEY.");
+
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${key}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model,
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "Sei un assistente per nutrizione e ricette, conciso e pratico.",
+                },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.4,
+        }),
+    });
+
+    const raw = await r.text().catch(() => "");
+    if (!r.ok) throw new Error(`OpenAI ${r.status}: ${raw}`);
+    const data = raw ? JSON.parse(raw) : {};
+    const text = data?.choices?.[0]?.message?.content?.trim() ?? "";
+    return { provider: `openai:${model}`, text };
+}
+
+/* ─────────── Perplexity (solo PRO) ─────────── */
+async function callPerplexity(prompt) {
+    const key = process.env.PERPLEXITY_API_KEY;
+    if (!key) throw new Error("Manca PERPLEXITY_API_KEY.");
+
+    const model = process.env.PPLX_MODEL || "llama-3.1-sonar-small-128k-chat";
+    const r = await fetch("https://api.perplexity.ai/chat/completions", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${key}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model,
+            messages: [
+                { role: "system", content: "You are a helpful nutrition coach." },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.2,
+            stream: false,
+        }),
+    });
+
+    const raw = await r.text().catch(() => "");
+    if (!r.ok) throw new Error(`Perplexity ${r.status}: ${raw}`);
+    const data = raw ? JSON.parse(raw) : {};
+    const text = data?.choices?.[0]?.message?.content ?? "";
+    return { provider: `perplexity:${model}`, text };
+}
+
+/* ─────────── Main route ─────────── */
 export async function POST(req) {
     try {
         const { prompt, plan: planFromBody } = await req.json();
-        if (!prompt || typeof prompt !== "string") {
-            return badRequest("Missing 'prompt' (string).");
-        }
+        if (!prompt || typeof prompt !== "string")
+            return bad("Missing 'prompt' (string).");
 
-        // piano: body → env → base
         const plan =
             (planFromBody && String(planFromBody).toLowerCase()) ||
             (process.env.USER_PLAN && process.env.USER_PLAN.toLowerCase()) ||
             "base";
 
-        /* ───────────── BASE → GEMINI (AI Studio key) ───────────── */
+        /* ───── BASE → Gemini ───── */
         if (plan === "base") {
-            const gk = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-            if (!gk) return badRequest("Manca GOOGLE_GENERATIVE_AI_API_KEY.");
-
-            // Prova prima l’API v1 (Google Cloud), poi v1beta (AI Studio),
-            // e vari modelli comuni. Se fallisce → fallback a OpenAI/Perplexity.
-            const endpoints = ["v1", "v1beta"];
-            const models = [
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-latest",
-                "gemini-1.5-pro",
-                "gemini-1.5-pro-latest",
-                "gemini-pro" // legacy, spesso sbloccato
-            ];
-
-            for (const ver of endpoints) {
-                for (const m of models) {
-                    try {
-                        const url = `https://generativelanguage.googleapis.com/${ver}/models/${m}:generateContent?key=${gk}`;
-                        const r = await fetch(url, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                                generationConfig: { temperature: 0.4 }
-                            })
-                        });
-
-                        if (!r.ok) {
-                            // 404/400 → modello o versione non disponibile; prova il prossimo
-                            if (r.status === 404 || r.status === 400) {
-                                const t = await r.text().catch(() => "");
-                                console.warn(`Gemini ${ver}/${m} -> ${r.status}`, t);
-                                continue;
-                            }
-                            // altri errori = fermati e passa al fallback
-                            const t = await r.text().catch(() => "");
-                            console.error(`Gemini ${ver}/${m} upstream ${r.status}`, t);
-                            break;
-                        }
-
-                        const data = await r.json();
-                        const text =
-                            data?.candidates?.[0]?.content?.parts?.[0]?.text ??
-                            data?.candidates?.[0]?.output ?? "…";
-                        if (text) return jsonOK({ result: text, provider: `gemini:${ver}/${m}` });
-                    } catch (e) {
-                        console.warn(`Gemini ${ver}/${m} network error:`, e?.message);
-                        continue;
-                    }
-                }
-            }
-
-            // ───── Fallback 1: OpenAI (se disponibile) ─────
-            if (process.env.OPENAI_API_KEY) {
-                try {
-                    const { default: OpenAI } = await import("openai");
-                    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                    const resp = await client.chat.completions.create({
-                        model: "gpt-4o-mini",
-                        messages: [
-                            { role: "system", content: "Sei un assistente nutrizione/ricette conciso e pratico." },
-                            { role: "user", content: prompt }
-                        ],
-                        temperature: 0.4
-                    });
-                    const text = resp?.choices?.[0]?.message?.content?.trim() || "…";
-                    return jsonOK({ result: text, provider: "openai:fallback" });
-                } catch (e) {
-                    console.error("OpenAI fallback error:", e);
-                }
-            }
-
-            // ───── Fallback 2: Perplexity (se disponibile) ─────
-            if (process.env.PERPLEXITY_API_KEY) {
-                try {
-                    const r = await fetch("https://api.perplexity.ai/chat/completions", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`
-                        },
-                        body: JSON.stringify({
-                            model: "llama-3.1-sonar-small-128k-online",
-                            messages: [{ role: "user", content: prompt }],
-                            temperature: 0.2
-                        })
-                    });
-                    if (!r.ok) {
-                        const t = await r.text().catch(() => "");
-                        console.error("Perplexity upstream error:", r.status, t);
-                        return upstreamError(`Perplexity error ${r.status}`);
-                    }
-                    const data = await r.json();
-                    const text = data?.choices?.[0]?.message?.content || "…";
-                    return jsonOK({ result: text, provider: "perplexity:fallback" });
-                } catch (e) {
-                    console.error("Perplexity fallback error:", e);
-                }
-            }
-
-            return upstreamError(
-                "Nessun provider disponibile: abilita i modelli Gemini in AI Studio o configura OPENAI_API_KEY / PERPLEXITY_API_KEY."
-            );
+            const g = await callGemini(prompt);
+            return ok({ result: g.text, parts: [g], provider: g.provider });
         }
 
-        /* ───────────── PLUS → PERPLEXITY ───────────── */
+        /* ───── PLUS → Gemini + OpenAI ───── */
         if (plan === "plus") {
-            const key = process.env.PERPLEXITY_API_KEY;
-            if (!key) return badRequest("Manca PERPLEXITY_API_KEY.");
-            const r = await fetch("https://api.perplexity.ai/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${key}`
-                },
-                body: JSON.stringify({
-                    model: "llama-3.1-sonar-small-128k-online",
-                    messages: [{ role: "user", content: prompt }],
-                    temperature: 0.2
-                })
-            });
-            if (!r.ok) {
-                const t = await r.text().catch(() => "");
-                console.error("Perplexity upstream error:", r.status, t);
-                return upstreamError(`Perplexity error ${r.status}`);
+            const results = await Promise.allSettled([
+                callGemini(prompt),
+                callOpenAI(prompt),
+            ]);
+            const errors = results.filter((r) => r.status === "rejected");
+            if (errors.length) {
+                const msgs = errors.map((e) => e.reason?.message || String(e.reason));
+                return upstream("Uno o più provider hanno fallito (PLUS).", msgs.join("\n"));
             }
-            const data = await r.json();
-            const text = data?.choices?.[0]?.message?.content || "…";
-            return jsonOK({ result: text, provider: "perplexity:plus" });
+            const vals = results.map((r) => r.value);
+            return ok({
+                result: vals.map((v) => `[${v.provider}]\n${v.text}`).join("\n\n"),
+                parts: vals,
+                provider: "plus:gemini+openai",
+            });
         }
 
-        /* ───────────── PRO → OPENAI ───────────── */
-        const openaiKey = process.env.OPENAI_API_KEY;
-        if (!openaiKey) return badRequest("Manca OPENAI_API_KEY.");
-        const { default: OpenAI } = await import("openai");
-        const client = new OpenAI({ apiKey: openaiKey });
+        /* ───── PRO → Gemini + OpenAI + Perplexity ───── */
+        if (plan === "pro") {
+            const results = await Promise.allSettled([
+                callGemini(prompt),
+                callOpenAI(prompt),
+                callPerplexity(prompt),
+            ]);
+            const errors = results.filter((r) => r.status === "rejected");
+            if (errors.length) {
+                const msgs = errors.map((e) => e.reason?.message || String(e.reason));
+                return upstream("Uno o più provider hanno fallito (PRO).", msgs.join("\n"));
+            }
+            const vals = results.map((r) => r.value);
+            return ok({
+                result: vals.map((v) => `[${v.provider}]\n${v.text}`).join("\n\n"),
+                parts: vals,
+                provider: "pro:gemini+openai+perplexity",
+            });
+        }
 
-        const resp = await client.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: "Sei un assistente nutrizione/ricette conciso e pratico." },
-                { role: "user", content: prompt }
-            ],
-            temperature: 0.4
-        });
-        const text = resp?.choices?.[0]?.message?.content?.trim() || "…";
-        return jsonOK({ result: text, provider: "openai:pro" });
+        return bad(`Piano sconosciuto: ${plan}`);
     } catch (err) {
         console.error("API /chat fatal:", err);
-        return NextResponse.json({ error: err?.message || "Unhandled server error" }, { status: 500 });
+        return NextResponse.json(
+            { error: err?.message || "Unhandled server error" },
+            { status: 500 }
+        );
     }
 }
