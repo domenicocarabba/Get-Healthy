@@ -1,36 +1,13 @@
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-export const fetchCache = 'default-no-store';
+import { Suspense } from "react";
+import SuccessClient from "./SuccessClient";
 
-/** @param {{ searchParams?: Record<string, string> }} props */
-export default function Page({ searchParams = {} }) {
-    const plan = searchParams.plan ?? 'base';
+// Evita il pre-render statico che causa l'errore in export
+export const dynamic = "force-dynamic"; // (in alternativa: export const revalidate = 0)
 
+export default function Page() {
     return (
-        <main>
-            <section
-                style={{
-                    maxWidth: 720,
-                    margin: '0 auto',
-                    padding: '3rem 1rem',
-                    textAlign: 'center',
-                }}
-            >
-                <h1>✅ Pagamento completato</h1>
-                <p>
-                    Hai attivato il piano: <strong>{plan}</strong>
-                </p>
-                <a
-                    href="/"
-                    style={{
-                        display: 'inline-block',
-                        marginTop: 24,
-                        textDecoration: 'underline',
-                    }}
-                >
-                    Torna alla Home
-                </a>
-            </section>
-        </main>
+        <Suspense fallback={<div className="p-6">Loading…</div>}>
+            <SuccessClient />
+        </Suspense>
     );
 }
