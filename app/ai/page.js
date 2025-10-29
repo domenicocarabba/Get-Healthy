@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { exportCSV, exportPlanPDF, shoppingListRows } from "../../lib/export.js";
+import { exportCSV, exportPlanPDF, shoppingListRows } from "../../lib/ai/export.js";
 
 
 
