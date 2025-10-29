@@ -1,13 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+// opzionale: evita SSG/ISR su questa pagina
+export const dynamic = "force-dynamic";
 
 export default function RecipesPage() {
-    const plan = localStorage.getItem("gh_plan") || "base";
+    const [plan, setPlan] = useState("base");        // letto dal client in useEffect
     const [prompt, setPrompt] = useState("");
     const [recipe, setRecipe] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+
+    // Leggi localStorage solo lato client
+    useEffect(() => {
+        try {
+            const stored =
+                typeof window !== "undefined" ? localStorage.getItem("gh_plan") : null;
+            setPlan(stored || "base");
+        } catch {
+            setPlan("base");
+        }
+    }, []);
 
     async function generateRecipe() {
         if (!prompt.trim()) return;
@@ -23,11 +37,11 @@ export default function RecipesPage() {
             });
 
             const data = await res.json();
-            if (!data.ok) throw new Error(data.error || "Errore generazione ricetta");
+            if (!res.ok || !data.ok) throw new Error(data?.error || "Errore generazione ricetta");
 
             setRecipe(data.recipe);
         } catch (e) {
-            setError(e.message);
+            setError(e.message || "Errore generazione ricetta");
         } finally {
             setLoading(false);
         }
@@ -62,8 +76,7 @@ export default function RecipesPage() {
                 <div className="mt-8 border rounded-2xl p-6 bg-white shadow">
                     <h2 className="text-2xl font-bold mb-2">{recipe.name}</h2>
                     <p className="text-sm text-gray-500 mb-4">
-                        Porzioni: {recipe.servings} — Prep: {recipe.prep_minutes} min, Cottura:{" "}
-                        {recipe.cook_minutes} min
+                        Porzioni: {recipe.servings} — Prep: {recipe.prep_minutes} min, Cottura: {recipe.cook_minutes} min
                     </p>
 
                     {recipe.macros && (
