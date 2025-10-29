@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="none">
+  <rect width="800" height="800" fill="#FCFBF7"/>
+  <g transform="translate(220,220)">
+    <path fill="#2E9B4E" d="M180 0c-50 0-90 60-110 120-20 60-30 120 10 180s100 70 100 70 60-10 100-70 30-120 10-180C270 60 230 0 180 0Zm0 300c-33 0-60-27-60-60s27-60 60-60 60 27 60 60-27 60-60 60Z"/>
+  </g>
+  <text x="420" y="360" font-family="Arial, Helvetica, sans-serif" font-size="120" font-weight="bold" fill="#2E9B4E">
+    Get
+  </text>
+  <text x="420" y="480" font-family="Arial, Helvetica, sans-serif" font-size="120" font-weight="bold" fill="#2E9B4E">
+    Healthy
+  </text>
+</svg>
