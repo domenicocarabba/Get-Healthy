@@ -2,25 +2,27 @@
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { kv } from "@vercel/kv";
-import { routeByPlan } from "../../../lib/ai/router";
-import type { Plan } from "../../../lib/ai/providers";
+import { routeByPlan } from "@/lib/ai/router";
+import type { Plan } from "@/lib/ai/providers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ---------- Config limiti ---------- */
-// Tetti mensili (token) per piano
 const MONTHLY_CAPS: Record<Plan, number> = {
     base: 40_000,
     plus: 300_000,
     pro: 1_000_000,
 };
-
-// Richieste/ora per piano
 const RATE_PER_HOUR: Record<Plan, number> = {
     base: 60,
     plus: 300,
     pro: 1000,
+};
+const PRIORITY_DELAY_MS: Record<Plan, number> = {
+    base: 1000,
+    plus: 250,
+    pro: 0,
 };
 
 /* ---------- Helpers ---------- */
@@ -32,9 +34,14 @@ function hourKey(d = new Date()): string {
         d.getUTCDate()
     ).padStart(2, "0")}T${String(d.getUTCHours()).padStart(2, "0")}`;
 }
-// stima grezza: ~4 char ≈ 1 token
+// ~4 char ≈ 1 token; assegniamo anche un costo fisso per immagine
 function estimateTokens(s: string): number {
-    return Math.ceil((s ?? "").length / 4);
+    if (!s) return 0;
+    return Math.max(0, Math.ceil(String(s).length / 4));
+}
+function imageTokenCost(n: number): number {
+    // costo approssimativo per immagine per non lasciare illimitato
+    return Math.min(4, n) * 256; // 256 token per immagine (MVP)
 }
 function getOrCreateUserId(): string {
     const jar = cookies();
@@ -45,15 +52,23 @@ function getOrCreateUserId(): string {
     }
     return uid;
 }
+function sleep(ms: number) {
+    return new Promise((r) => setTimeout(r, ms));
+}
 
 /* ---------- Handler ---------- */
-type Body = { prompt?: unknown; plan?: unknown };
+type Body = {
+    prompt?: unknown;       // string
+    plan?: unknown;         // "base" | "plus" | "pro"
+    images?: unknown;       // string[] (dataURL o base64)
+    prefs?: Record<string, unknown>;
+};
 
 export async function POST(req: NextRequest) {
     try {
         const body = (await req.json()) as Body;
 
-        const prompt = typeof body.prompt === "string" ? body.prompt : undefined;
+        const prompt = typeof body.prompt === "string" ? body.prompt.trim() : undefined;
         if (!prompt) {
             return NextResponse.json(
                 { error: "Parametro 'prompt' mancante o non valido." },
@@ -61,9 +76,16 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // normalizza a union type stretta "base" | "plus" | "pro"
         const raw = (body.plan ?? "").toString().toLowerCase();
         const plan: Plan = raw === "plus" ? "plus" : raw === "pro" ? "pro" : "base";
+
+        // immagini: tieni solo stringhe non vuote, max 4 (MVP)
+        const images =
+            Array.isArray(body.images)
+                ? (body.images.filter((x) => typeof x === "string" && x.length > 0).slice(0, 4) as string[])
+                : undefined;
+
+        const prefs = body.prefs && typeof body.prefs === "object" ? body.prefs : undefined;
 
         const userId = getOrCreateUserId();
         const now = Date.now();
@@ -71,7 +93,7 @@ export async function POST(req: NextRequest) {
         /* ── Rate-limit orario ── */
         const rk = `rate:${userId}:${hourKey()}`;
         const count = await kv.incr(rk);
-        if (count === 1) await kv.expire(rk, 60 * 60); // TTL 1h
+        if (count === 1) await kv.expire(rk, 60 * 60);
         const perHour = RATE_PER_HOUR[plan];
         if (count > perHour) {
             return NextResponse.json(
@@ -91,13 +113,17 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        /* ── Chiamata a Gemini (limite per risposta gestito in router/providers) ── */
-        const text = await routeByPlan({ plan, prompt });
+        /* ── Priorità ── */
+        const delay = PRIORITY_DELAY_MS[plan] ?? 0;
+        if (delay > 0) await sleep(delay);
 
-        // stima token (prompt + risposta). In futuro puoi sostituire con usageMetadata.
-        const usedNow = estimateTokens(prompt) + estimateTokens(text);
+        /* ── Chiamata router (testo + immagini + prefs) ── */
+        const text = await routeByPlan({ plan, prompt, images, prefs });
 
-        // aggiorna usage mensile (TTL ~45 giorni così copre fine mese)
+        // stima token: prompt + risposta + costo immagini
+        const usedNow = estimateTokens(prompt) + estimateTokens(text) + imageTokenCost(images?.length || 0);
+
+        // aggiorna usage mensile (TTL ~45d)
         const newTotal = await kv.incrby(mk, usedNow);
         if (newTotal === usedNow) await kv.expire(mk, 60 * 60 * 24 * 45);
 
@@ -105,10 +131,10 @@ export async function POST(req: NextRequest) {
         const hk = `hist:${userId}:${monthKey()}`;
         await kv.rpush(
             hk,
-            JSON.stringify({ ts: now, role: "user", text: prompt }),
+            JSON.stringify({ ts: now, role: "user", text: prompt, images_count: images?.length || 0 }),
             JSON.stringify({ ts: now, role: "assistant", text })
         );
-        await kv.ltrim(hk, -500, -1); // mantieni ultimi 500 messaggi
+        await kv.ltrim(hk, -500, -1);
 
         return NextResponse.json({
             result: text,
@@ -119,6 +145,7 @@ export async function POST(req: NextRequest) {
                 plan,
             },
             provider: "gemini-2.5-flash-image-preview",
+            images_count: images?.length || 0,
         });
     } catch (err: any) {
         console.error("❌ /api/chat error:", err);
