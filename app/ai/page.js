@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { exportCSV, exportPlanPDF, shoppingListRows } from "../../lib/export";
+import { exportCSV, exportPlanPDF, shoppingListRows } from "@/lib/export";
+
 
 // MOCK: finché non colleghi l’abbonamento reale (Stripe/Auth)
 function useActivePlan() {
