@@ -2,12 +2,19 @@
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { kv } from "@vercel/kv";
-import { routeByPlan } from "@/lib/ai/router";
-import type { Plan } from "@/lib/ai/providers";
-import { redis } from "../../../lib/ai/kv";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/* ---------- Tipi ---------- */
+type Plan = "base" | "plus" | "pro";
+type Body = {
+    prompt?: unknown;       // string
+    plan?: unknown;         // "base" | "plus" | "pro"
+    images?: unknown;       // string[] dataURL/base64
+    prefs?: Record<string, unknown>;
+};
 
 /* ---------- Config limiti ---------- */
 const MONTHLY_CAPS: Record<Plan, number> = {
@@ -35,14 +42,14 @@ function hourKey(d = new Date()): string {
         d.getUTCDate()
     ).padStart(2, "0")}T${String(d.getUTCHours()).padStart(2, "0")}`;
 }
-// ~4 char ≈ 1 token; assegniamo anche un costo fisso per immagine
+// ~4 char ≈ 1 token
 function estimateTokens(s: string): number {
     if (!s) return 0;
     return Math.max(0, Math.ceil(String(s).length / 4));
 }
+// costo approssimativo per immagine
 function imageTokenCost(n: number): number {
-    // costo approssimativo per immagine per non lasciare illimitato
-    return Math.min(4, n) * 256; // 256 token per immagine (MVP)
+    return Math.min(4, n) * 256;
 }
 function getOrCreateUserId(): string {
     const jar = cookies();
@@ -56,40 +63,32 @@ function getOrCreateUserId(): string {
 function sleep(ms: number) {
     return new Promise((r) => setTimeout(r, ms));
 }
+function parseDataUrl(u: string): { mime: string; data: string } | null {
+    // data:[<mime>];base64,<data>
+    const m = u.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) return null;
+    return { mime: m[1], data: m[2] };
+}
 
 /* ---------- Handler ---------- */
-type Body = {
-    prompt?: unknown;       // string
-    plan?: unknown;         // "base" | "plus" | "pro"
-    images?: unknown;       // string[] (dataURL o base64)
-    prefs?: Record<string, unknown>;
-};
-
 export async function POST(req: NextRequest) {
     try {
         const body = (await req.json()) as Body;
 
         const prompt = typeof body.prompt === "string" ? body.prompt.trim() : undefined;
         if (!prompt) {
-            return NextResponse.json(
-                { error: "Parametro 'prompt' mancante o non valido." },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: "Parametro 'prompt' mancante o non valido." }, { status: 400 });
         }
 
         const raw = (body.plan ?? "").toString().toLowerCase();
         const plan: Plan = raw === "plus" ? "plus" : raw === "pro" ? "pro" : "base";
 
-        // immagini: tieni solo stringhe non vuote, max 4 (MVP)
         const images =
             Array.isArray(body.images)
                 ? (body.images.filter((x) => typeof x === "string" && x.length > 0).slice(0, 4) as string[])
-                : undefined;
-
-        const prefs = body.prefs && typeof body.prefs === "object" ? body.prefs : undefined;
+                : [];
 
         const userId = getOrCreateUserId();
-        const now = Date.now();
 
         /* ── Rate-limit orario ── */
         const rk = `rate:${userId}:${hourKey()}`;
@@ -118,41 +117,85 @@ export async function POST(req: NextRequest) {
         const delay = PRIORITY_DELAY_MS[plan] ?? 0;
         if (delay > 0) await sleep(delay);
 
-        /* ── Chiamata router (testo + immagini + prefs) ── */
-        const text = await routeByPlan({ plan, prompt, images, prefs });
+        /* ── Gemini stream ── */
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+        const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-pro",
+            generationConfig: { maxOutputTokens: 4096, temperature: 0.9 },
+        });
 
-        // stima token: prompt + risposta + costo immagini
-        const usedNow = estimateTokens(prompt) + estimateTokens(text) + imageTokenCost(images?.length || 0);
+        // costruisci parts: prompt + (eventuali) immagini
+        const parts: any[] = [{ text: prompt }];
+        for (const dataUrl of images) {
+            const parsed = parseDataUrl(dataUrl);
+            if (!parsed) continue;
+            parts.push({
+                inlineData: { mimeType: parsed.mime, data: parsed.data },
+            });
+        }
 
-        // aggiorna usage mensile (TTL ~45d)
-        const newTotal = await kv.incrby(mk, usedNow);
-        if (newTotal === usedNow) await kv.expire(mk, 60 * 60 * 24 * 45);
+        const result = await model.generateContentStream({
+            contents: [{ role: "user", parts }],
+        });
 
-        /* ── Salva cronologia chat ── */
-        const hk = `hist:${userId}:${monthKey()}`;
-        await kv.rpush(
-            hk,
-            JSON.stringify({ ts: now, role: "user", text: prompt, images_count: images?.length || 0 }),
-            JSON.stringify({ ts: now, role: "assistant", text })
-        );
-        await kv.ltrim(hk, -500, -1);
+        const encoder = new TextEncoder();
+        let acc = "";
 
-        return NextResponse.json({
-            result: text,
-            usage: {
-                used_now: usedNow,
-                used_month: newTotal,
-                cap_month: cap,
-                plan,
+        const stream = new ReadableStream({
+            async start(controller) {
+                try {
+                    for await (const event of result.stream) {
+                        const text = event?.text();
+                        if (text) {
+                            acc += text;
+                            controller.enqueue(encoder.encode(text));
+                        }
+                    }
+
+                    // calcola e registra usage
+                    const usedNow =
+                        estimateTokens(prompt) + estimateTokens(acc) + imageTokenCost(images.length);
+                    const newTotal = await kv.incrby(mk, usedNow);
+                    if (newTotal === usedNow) await kv.expire(mk, 60 * 60 * 24 * 45);
+
+                    // salva cronologia (ultimo mese)
+                    const hk = `hist:${userId}:${monthKey()}`;
+                    const now = Date.now();
+                    await kv.rpush(
+                        hk,
+                        JSON.stringify({ ts: now, role: "user", text: prompt, images_count: images.length }),
+                        JSON.stringify({ ts: now, role: "assistant", text: acc })
+                    );
+                    await kv.ltrim(hk, -500, -1);
+
+                    // invia un piccolo trailer con i dati usage (il client lo intercetta e non lo mostra)
+                    const trailer = {
+                        usage: {
+                            used_now: usedNow,
+                            used_month: newTotal,
+                            cap_month: cap,
+                            plan,
+                        },
+                    };
+                    controller.enqueue(encoder.encode(`\n<<<USAGE:${JSON.stringify(trailer)}>>>`));
+                } catch (e) {
+                    // in caso di errore durante lo stream prova a inviare un messaggio finale
+                    controller.enqueue(encoder.encode("\n[Errore durante lo stream]"));
+                } finally {
+                    controller.close();
+                }
             },
-            provider: "gemini-2.5-flash-image-preview",
-            images_count: images?.length || 0,
+        });
+
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/plain; charset=utf-8",
+                // per sicurezza con edge proxy
+                "Cache-Control": "no-store",
+            },
         });
     } catch (err: any) {
         console.error("❌ /api/chat error:", err);
-        return NextResponse.json(
-            { error: err?.message || "Errore interno del server" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: err?.message || "Errore interno del server" }, { status: 500 });
     }
 }

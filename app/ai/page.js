@@ -5,9 +5,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { exportCSV, exportPlanPDF, shoppingListRows } from "../../lib/ai/export.js";
 
-
-
-// MOCK: finché non colleghi l’abbonamento reale (Stripe/Auth)
+// MOCK: piano utente
 function useActivePlan() {
     const [plan, setPlan] = useState("base"); // "base" | "plus" | "pro"
     useEffect(() => {
@@ -16,7 +14,7 @@ function useActivePlan() {
     return plan;
 }
 
-// helper: converte immagine → base64 (data URL)
+// helper: File -> dataURL
 function fileToDataURL(file) {
     return new Promise((res, rej) => {
         const fr = new FileReader();
@@ -26,7 +24,7 @@ function fileToDataURL(file) {
     });
 }
 
-// pretty print ricetta JSON → testo
+// pretty print ricetta
 function formatRecipe(r) {
     if (!r || typeof r !== "object") return "Nessuna ricetta.";
     const ing = (r.ingredients || [])
@@ -51,7 +49,7 @@ function formatRecipe(r) {
     ].join("\n");
 }
 
-// pretty print piano JSON → testo
+// pretty print piano
 function formatMealplan(p) {
     if (!p || typeof p !== "object") return "Nessun piano disponibile.";
     const days = (p.days || [])
@@ -74,16 +72,9 @@ export default function AIPage() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [files, setFiles] = useState([]); // immagini caricate
+    const [files, setFiles] = useState([]);
     const fileInputRef = useRef(null);
 
-    /**
-     * Messaggi arricchiti:
-     * - role: "user" | "assistant"
-     * - text: string
-     * - type?: "plan" | "recipe" | "plain"
-     * - data?: any (per "plan" contiene il JSON del piano)
-     */
     const [messages, setMessages] = useState([
         {
             role: "assistant",
@@ -93,19 +84,16 @@ export default function AIPage() {
         },
     ]);
 
-    // stato uso token dal backend
     const [usage, setUsage] = useState({
         used_now: 0,
         used_month: 0,
         cap_month: 0,
         plan,
     });
-
-    // widget sticky
     const [showUsageWidget, setShowUsageWidget] = useState(true);
 
     /* =======================
-       CHAT TESTO + IMMAGINI
+       CHAT STREAMING
     ========================*/
     async function ask() {
         if (!input.trim() && files.length === 0) return;
@@ -117,11 +105,9 @@ export default function AIPage() {
         setInput("");
 
         try {
-            // converto immagini in base64
+            // immagini -> base64
             const images = [];
-            for (const f of files.slice(0, 4)) {
-                images.push(await fileToDataURL(f));
-            }
+            for (const f of files.slice(0, 4)) images.push(await fileToDataURL(f));
 
             const res = await fetch("/api/chat", {
                 method: "POST",
@@ -129,7 +115,7 @@ export default function AIPage() {
                 body: JSON.stringify({ prompt: userMsg.text, plan, images }),
             });
 
-            if (!res.ok) {
+            if (!res.ok || !res.body) {
                 let detail = "Errore di rete";
                 try {
                     const j = await res.json();
@@ -143,10 +129,53 @@ export default function AIPage() {
                 throw new Error(detail);
             }
 
-            const data = await res.json();
-            const reply = data?.result || "Nessuna risposta ricevuta.";
-            setMessages((m) => [...m, { role: "assistant", text: reply, type: "plain" }]);
-            if (data?.usage) setUsage(data.usage);
+            // messaggio assistant vuoto da riempire
+            setMessages((prev) => [...prev, { role: "assistant", text: "", type: "plain" }]);
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            for (; ;) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+
+                // marker trailer USAGE
+                const markerStart = buffer.indexOf("<<<USAGE:");
+                if (markerStart !== -1) {
+                    const visible = buffer.slice(0, markerStart);
+                    if (visible) {
+                        setMessages((prev) => {
+                            const copy = [...prev];
+                            const last = copy[copy.length - 1];
+                            if (last?.role === "assistant") last.text += visible;
+                            return copy;
+                        });
+                    }
+                    const markerEnd = buffer.indexOf(">>>", markerStart);
+                    if (markerEnd !== -1) {
+                        const jsonStr = buffer.slice(markerStart + "<<<USAGE:".length, markerEnd);
+                        try {
+                            const obj = JSON.parse(jsonStr);
+                            if (obj?.usage) setUsage(obj.usage);
+                        } catch { }
+                        buffer = buffer.slice(markerEnd + 3);
+                    } else {
+                        buffer = buffer.slice(0, markerStart);
+                        continue;
+                    }
+                } else {
+                    setMessages((prev) => {
+                        const copy = [...prev];
+                        const last = copy[copy.length - 1];
+                        if (last?.role === "assistant") last.text += chunk;
+                        return copy;
+                    });
+                    buffer = "";
+                }
+            }
         } catch (e) {
             setError(e.message || "Errore sconosciuto");
         } finally {
@@ -162,8 +191,6 @@ export default function AIPage() {
 
     /* =======================
         AZIONI RAPIDE
-       - Ricetta (Plus/Pro)
-       - Piano (Pro) + EXPORT
     ========================*/
     async function quickRecipe() {
         if (plan === "base") {
@@ -217,7 +244,6 @@ export default function AIPage() {
             const data = await res.json();
             if (!data.ok) throw new Error(data.error || "Errore creazione piano");
             const pretty = formatMealplan(data.plan || {});
-            // Salvo ANCHE il JSON del piano nel messaggio -> così mostro i bottoni Export
             setMessages((m) => [
                 ...m,
                 { role: "assistant", text: pretty, type: "plan", data: data.plan },
@@ -229,7 +255,6 @@ export default function AIPage() {
         }
     }
 
-    // Azioni export attaccate al messaggio "plan"
     function handleExportPDF(planJson) {
         exportPlanPDF(planJson, "piano_settimanale.pdf");
     }
@@ -240,12 +265,11 @@ export default function AIPage() {
     }
 
     const activeProviders = "Gemini (testo + immagini)";
-    const pct =
-        usage.cap_month > 0 ? Math.min(100, Math.round((usage.used_month / usage.cap_month) * 100)) : 0;
+    const pct = usage.cap_month > 0 ? Math.min(100, Math.round((usage.used_month / usage.cap_month) * 100)) : 0;
 
     return (
         <div className="min-h-screen">
-            {/* ===== HERO ===== */}
+            {/* HERO */}
             <section className="relative min-h-[100svh] flex flex-col items-center justify-center bg-black text-white text-center overflow-hidden">
                 <motion.div
                     initial={{ opacity: 0, y: -10 }}
@@ -287,7 +311,7 @@ export default function AIPage() {
                 </a>
             </section>
 
-            {/* ===== CHAT ===== */}
+            {/* CHAT */}
             <section id="chat" className="container max-w-3xl mx-auto px-4 py-14">
                 <div className="mb-6">
                     <h2 className="text-3xl font-bold">Get Healthy — AI</h2>
@@ -297,22 +321,13 @@ export default function AIPage() {
                     <p className="text-xs text-gray-400">Provider: {activeProviders}</p>
                 </div>
 
-                {/* Banner upgrade se piano base */}
-                {plan === "base" && (
-                    <div className="mb-6 rounded-lg border bg-white p-4">
-                        <p className="text-sm text-gray-700">
-                            Con il piano <b>BASE</b> usi <b>Gemini</b> con un limite ridotto di token. Con{" "}
-                            <a href="/pricing" className="text-green-600 underline font-semibold">PLUS</a> ottieni risposte più lunghe, mentre con{" "}
-                            <a href="/pricing" className="text-green-600 underline font-semibold">PRO</a> hai il massimo numero di token e priorità.
-                        </p>
-                    </div>
-                )}
-
-                {/* Contatore mensile + progress bar */}
+                {/* Progress uso */}
                 <div className="mb-4">
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                         <span>Utilizzo mensile</span>
-                        <span>{usage.used_month.toLocaleString()} / {usage.cap_month.toLocaleString()} token ({pct}%)</span>
+                        <span>
+                            {usage.used_month.toLocaleString()} / {usage.cap_month.toLocaleString()} token ({pct}%)
+                        </span>
                     </div>
                     <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                         <div className="h-2 bg-green-600" style={{ width: `${pct}%` }} />
@@ -320,7 +335,7 @@ export default function AIPage() {
                 </div>
 
                 <div className="border rounded-lg p-4 bg-white">
-                    <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+                    <div className="space-y-4 max-h-[50vh] overflow-y-auto break-words">
                         {messages.map((m, i) => (
                             <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
                                 <div
@@ -330,7 +345,6 @@ export default function AIPage() {
                                     {m.text}
                                 </div>
 
-                                {/* Bottoni EXPORT se questo messaggio è un PIANO e l'utente è PRO */}
                                 {m.role === "assistant" && m.type === "plan" && plan === "pro" && (
                                     <div className="mt-2 flex gap-2">
                                         <button
@@ -353,7 +367,7 @@ export default function AIPage() {
                         {error && <div className="text-sm text-red-600">{error}</div>}
                     </div>
 
-                    {/* ===== AZIONI RAPIDE ===== */}
+                    {/* Azioni rapide */}
                     <div className="mt-4 grid gap-2 md:grid-cols-2">
                         <button
                             onClick={quickRecipe}
@@ -362,7 +376,6 @@ export default function AIPage() {
                         >
                             🍽️ Genera Ricetta {plan === "base" && "(Plus)"}
                         </button>
-
                         <button
                             onClick={quickMealplan}
                             className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 text-left"
@@ -372,7 +385,7 @@ export default function AIPage() {
                         </button>
                     </div>
 
-                    {/* Input + upload immagini */}
+                    {/* Input + upload */}
                     <div className="mt-4 flex flex-col gap-3">
                         <textarea
                             className="flex-1 border rounded px-3 py-2"
@@ -382,7 +395,6 @@ export default function AIPage() {
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKey}
                         />
-
                         <div className="flex items-center justify-between gap-3">
                             <input
                                 ref={fileInputRef}
@@ -399,20 +411,13 @@ export default function AIPage() {
                                 Invia
                             </button>
                         </div>
-
                         {files.length > 0 && (
                             <div className="flex gap-2 mt-2 flex-wrap">
                                 {files.map((f, i) => (
-                                    <img
-                                        key={i}
-                                        src={URL.createObjectURL(f)}
-                                        alt={`img-${i}`}
-                                        className="w-16 h-16 object-cover rounded border"
-                                    />
+                                    <img key={i} src={URL.createObjectURL(f)} alt={`img-${i}`} className="w-16 h-16 object-cover rounded border" />
                                 ))}
                             </div>
                         )}
-
                         <p className="text-xs text-gray-500 mt-2">
                             Nota: i contenuti sono informativi e non sostituiscono pareri medici.
                         </p>
@@ -420,7 +425,7 @@ export default function AIPage() {
                 </div>
             </section>
 
-            {/* ===== STICKY USAGE WIDGET ===== */}
+            {/* STICKY USAGE WIDGET */}
             {showUsageWidget && usage.cap_month > 0 && (
                 <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4 pointer-events-none">
                     <div className="max-w-md w-full rounded-xl shadow-lg bg-white border p-3 pointer-events-auto">
