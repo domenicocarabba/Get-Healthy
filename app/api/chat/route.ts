@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { kv } from "@vercel/kv";
 import { routeByPlan } from "@/lib/ai/router";
 import type { Plan } from "@/lib/ai/providers";
+import { redis } from "../../../lib/ai/kv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
