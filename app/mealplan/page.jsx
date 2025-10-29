@@ -1,15 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+// (opzionale ma utile) evita SSG/ISR su questa pagina
+export const dynamic = "force-dynamic";
 
 export default function MealplanPage() {
-    const plan = localStorage.getItem("gh_plan") || "base";
+    const [plan, setPlan] = useState("base"); // letto dopo in useEffect
     const [days, setDays] = useState(7);
     const [mealsPerDay, setMealsPerDay] = useState(3);
     const [prefs, setPrefs] = useState("");
     const [planData, setPlanData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+
+    // Leggi localStorage solo lato client
+    useEffect(() => {
+        try {
+            const stored =
+                typeof window !== "undefined" ? localStorage.getItem("gh_plan") : null;
+            setPlan(stored || "base");
+        } catch {
+            // in caso di blocchi privacy, rimani su "base"
+            setPlan("base");
+        }
+    }, []);
 
     async function generatePlan() {
         setError("");
@@ -21,7 +36,7 @@ export default function MealplanPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    plan,
+                    plan,                 // ora viene dallo state
                     days,
                     mealsPerDay,
                     prefs: { note: prefs },
@@ -29,10 +44,12 @@ export default function MealplanPage() {
             });
 
             const data = await res.json();
-            if (!data.ok) throw new Error(data.error || "Errore creazione piano");
+            if (!res.ok || !data.ok) {
+                throw new Error(data?.error || "Errore creazione piano");
+            }
             setPlanData(data.plan);
         } catch (e) {
-            setError(e.message);
+            setError(e.message || "Errore creazione piano");
         } finally {
             setLoading(false);
         }
@@ -41,9 +58,16 @@ export default function MealplanPage() {
     return (
         <div className="max-w-4xl mx-auto px-4 py-24">
             <h1 className="text-4xl font-bold mb-4 text-green-700">Piano Alimentare AI</h1>
-            <p className="text-sm text-gray-500 mb-8">
+
+            <p className="text-sm text-gray-500 mb-3">
                 Piano attivo: <b>{plan}</b>. La generazione dei piani settimanali è disponibile solo nel piano <b>Pro</b>.
             </p>
+
+            {plan !== "pro" && (
+                <div className="mb-6 rounded-lg border bg-white p-3 text-sm">
+                    Per generare un piano completo passa al piano <a href="/pricing" className="text-green-700 underline font-semibold">Pro</a>.
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <label className="flex flex-col text-sm">
