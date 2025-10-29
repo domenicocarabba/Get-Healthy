@@ -8,7 +8,6 @@ export default function PricingPage() {
     const router = useRouter();
 
     function choose(target) {
-        // ❌ NIENTE localStorage qui
         router.push(target);
     }
 
@@ -18,7 +17,9 @@ export default function PricingPage() {
                 Scegli il tuo piano
             </h1>
             <p className="text-center text-gray-600 mb-12">
-                Passa a PLUS o PRO per funzioni avanzate e modelli AI multipli.
+                Tutti i piani usano{" "}
+                <b>Gemini&nbsp;2.5&nbsp;Flash&nbsp;Image&nbsp;Preview</b>, con limiti di
+                token e priorità diversi.
             </p>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -27,9 +28,11 @@ export default function PricingPage() {
                     <h3 className="text-xl font-semibold mb-1">Base</h3>
                     <p className="text-gray-500 mb-4">Gratis</p>
                     <ul className="text-sm space-y-2 mb-6">
-                        <li>• Accesso essenziale alla chat</li>
-                        <li>• Modello: Gemini (standard)</li>
-                        <li>• Limite richieste giornaliere</li>
+                        <li>• Accesso essenziale alla chat AI</li>
+                        <li>• Modello: Gemini 2.5 Flash Image Preview</li>
+                        <li>• Risposte fino a <b>512 token</b></li>
+                        <li>• Tetto mensile: <b>40.000 token</b></li>
+                        <li>• Ricette e consigli base</li>
                     </ul>
                     <button
                         onClick={() => choose("/ai?plan=base")}
@@ -47,9 +50,12 @@ export default function PricingPage() {
                     <h3 className="text-xl font-semibold mb-1">Plus</h3>
                     <p className="text-gray-500 mb-4">€9.90 / mese</p>
                     <ul className="text-sm space-y-2 mb-6">
-                        <li>• Gemini + ChatGPT</li>
-                        <li>• Più richieste e priorità</li>
-                        <li>• Ricette e piani avanzati</li>
+                        <li>• Stesso modello Gemini</li>
+                        <li>• Risposte fino a <b>1024 token</b></li>
+                        <li>• Tetto mensile: <b>300.000 token</b></li>
+                        <li>• Priorità più alta e più richieste al mese</li>
+                        <li>• Ricette dettagliate con macro e tempi</li>
+                        <li>• Cronologia chat e suggerimenti smart</li>
                     </ul>
                     <button
                         onClick={() => choose("/checkout?plan=plus")}
@@ -70,10 +76,12 @@ export default function PricingPage() {
                     <h3 className="text-xl font-semibold mb-1">Pro</h3>
                     <p className="text-gray-500 mb-4">€19.90 / mese</p>
                     <ul className="text-sm space-y-2 mb-6">
-                        <li>• Gemini + ChatGPT + Perplexity</li>
-                        <li>• Priorità massima</li>
-                        <li>• Limiti elevati</li>
-                        <li>• Supporto fitness e piani personalizzati</li>
+                        <li>• Stesso modello Gemini</li>
+                        <li>• Risposte fino a <b>2048 token</b></li>
+                        <li>• Tetto mensile: <b>1.000.000 token</b></li>
+                        <li>• Priorità massima e tempi di risposta ridotti</li>
+                        <li>• Piani alimentari personalizzati e shopping list</li>
+                        <li>• Esportazione PDF / CSV e preferenze ingredienti</li>
                     </ul>
                     <button
                         onClick={() => choose("/checkout?plan=pro")}
