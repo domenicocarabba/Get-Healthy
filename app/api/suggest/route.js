@@ -5,7 +5,7 @@ export async function POST(req) {
     try {
         const { lastMessages = [] } = await req.json();
         const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genai.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-1.5-flash" });
+        const model = genai.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-2.5-flash-image-preview" });
         const { response } = await model.generateContent(
             `In base a questa conversazione, proponi 4 suggerimenti di richieste, elenco JSON puro: ["...","..."].\n\n${JSON.stringify(lastMessages)}`
         );

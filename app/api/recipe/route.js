@@ -12,7 +12,7 @@ Rispetta allergie e preferenze: ${JSON.stringify(prefs)}.`;
 
         const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genai.getGenerativeModel({
-            model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+            model: process.env.GEMINI_MODEL || "gemini-2.5-flash-image-preview",
             systemInstruction: sys,
             generationConfig: { maxOutputTokens: maxOut, temperature: 0.6 }
         });

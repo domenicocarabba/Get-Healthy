@@ -8,7 +8,7 @@ export async function POST(req) {
 
         const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genai.getGenerativeModel({
-            model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+            model: process.env.GEMINI_MODEL || "gemini-2.5-flash-image-preview",
             systemInstruction: `Sei un dietista. Rispondi SOLO JSON con schema:
 {
  days:[{ day:number, meals:[{name, recipe, macros:{kcal,protein_g,carbs_g,fat_g}, ingredients:[{item,qty,unit}]}], total_macros:{kcal,protein_g,carbs_g,fat_g} }],
