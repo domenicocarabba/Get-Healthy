@@ -105,16 +105,6 @@ export default function LoginPage() {
             <p className="mt-4 text-sm">
                 Non hai un account? <a className="underline" href="/signup">Registrati</a>
             </p>
-
-            {/* Pulsante fallback utile per capire se il redirect è bloccato */}
-            <div className="mt-4">
-                <button
-                    onClick={() => { console.log("[LOGIN] manual goto", redirect); router.replace(redirect); }}
-                    className="underline text-sm"
-                >
-                    Vai manualmente a {redirect}
-                </button>
-            </div>
         </div>
     );
 }
