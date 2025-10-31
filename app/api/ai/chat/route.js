@@ -1,48 +1,78 @@
-import { supabaseServer, supabaseAdmin } from "@/lib/ai/supabaseServer";
+// /app/api/ai/chat/route.js
+export const runtime = "nodejs";
+
+import { NextResponse } from "next/server";
+import { supabaseRoute, supabaseAdmin } from "@/lib/ai/supabaseServer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
+/* ----------------------------- Helpers locali ----------------------------- */
 function estimateTokens(str) {
     return Math.ceil((str || "").length / 4);
 }
+
 function parseDataURL(dataURL) {
     const m = String(dataURL || "").match(/^data:(.+?);base64,(.+)$/);
     if (!m) return null;
     return { mime: m[1], b64: m[2] };
 }
 
+/* ------------------------------- Handler POST ------------------------------ */
 export async function POST(req) {
+    // 1) Body e validazioni base
     const { threadId, userMessage, images = [], docs = [], fileUris = [] } = await req.json();
-    if (!threadId || !userMessage)
-        return Response.json({ error: "threadId e userMessage richiesti" }, { status: 400 });
+    if (!threadId || !userMessage) {
+        return NextResponse.json({ error: "threadId e userMessage richiesti" }, { status: 400 });
+    }
 
-    const supabase = supabaseServer();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
+    // 2) Client Supabase per Route Handler + sessione
+    const supabase = supabaseRoute();
+    const {
+        data: { session },
+        error: sessErr,
+    } = await supabase.auth.getSession();
 
+    if (sessErr) {
+        return NextResponse.json({ error: `Errore sessione: ${sessErr.message}` }, { status: 500 });
+    }
+    if (!session?.user) {
+        return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    const user = session.user;
+
+    // 3) Lettura profilo/limiti piano
     const { data: profile, error: pErr } = await supabase
         .from("profiles")
         .select("plan, token_limit, tokens_used")
         .eq("id", user.id)
         .single();
-    if (pErr) return Response.json({ error: pErr.message }, { status: 400 });
-    if (profile.tokens_used >= profile.token_limit)
-        return Response.json({ error: "Hai raggiunto il limite del tuo piano." }, { status: 403 });
 
+    if (pErr) {
+        return NextResponse.json({ error: pErr.message }, { status: 400 });
+    }
+
+    const tokenLimit = Number(profile?.token_limit ?? 0) || 0;
+    const tokensUsedSoFar = Number(profile?.tokens_used ?? 0) || 0;
+
+    if (tokenLimit && tokensUsedSoFar >= tokenLimit) {
+        return NextResponse.json({ error: "Hai raggiunto il limite del tuo piano." }, { status: 403 });
+    }
+
+    // 4) Salva il messaggio dell’utente nello storico
     await supabase.from("ai_messages").insert({
         thread_id: threadId,
         user_id: user.id,
         role: "user",
-        content: userMessage,
+        content: String(userMessage),
     });
 
+    // 5) Recupera history per dare contesto al modello (ultimi N messaggi)
     const { data: history } = await supabase
         .from("ai_messages")
         .select("role, content")
         .eq("thread_id", threadId)
         .order("created_at", { ascending: true });
 
+    // 6) Prepara le parti per Gemini
     const parts = [];
 
     parts.push({
@@ -57,7 +87,7 @@ export async function POST(req) {
         .join("\n");
     if (contextText) parts.push({ text: `Contesto (estratto):\n${contextText}\n` });
 
-    // documenti testuali in chiaro
+    // Documenti testuali (snippet sicuro)
     const SAFE_DOC_CHARS = 18000;
     for (const d of docs.slice(0, 5)) {
         const name = (d?.name || "documento").toString();
@@ -71,7 +101,7 @@ export async function POST(req) {
         if (text.length > SAFE_DOC_CHARS) parts.push({ text: `(Nota: ${name} troncato per lunghezza)\n` });
     }
 
-    // immagini inline
+    // Immagini in data URL
     for (const dataURL of images.slice(0, 4)) {
         const p = parseDataURL(dataURL);
         if (p && /^image\//.test(p.mime)) {
@@ -79,7 +109,7 @@ export async function POST(req) {
         }
     }
 
-    // file caricati su Gemini (PDF/DOCX ecc.)
+    // File già caricati su Gemini (PDF/DOCX ecc.)
     for (const f of (fileUris || []).slice(0, 10)) {
         if (f?.uri && f?.mimeType) {
             parts.push({ fileData: { fileUri: f.uri, mimeType: f.mimeType } });
@@ -89,28 +119,48 @@ export async function POST(req) {
 
     parts.push({ text: `Domanda:\n${userMessage}\n` });
 
+    // 7) Inizializza Gemini e genera risposta
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return NextResponse.json({ error: "GEMINI_API_KEY mancante nelle env" }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
 
     let aiReply = "";
     try {
         const result = await model.generateContent(parts);
         const response = await result.response;
-        aiReply = response.text();
+        aiReply = response.text() || "";
     } catch (err) {
         console.error("Errore Gemini:", err);
-        return Response.json({ error: "Errore nella risposta AI" }, { status: 500 });
+        return NextResponse.json({ error: "Errore nella risposta AI" }, { status: 500 });
     }
 
-    const tokensUsed =
+    // 8) Stima token e aggiorna profilo (admin se disponibile)
+    const tokensUsedNow =
         estimateTokens(userMessage) +
         docs.reduce((s, d) => s + estimateTokens(d?.text || ""), 0) +
         estimateTokens(aiReply);
 
-    await supabaseAdmin
-        .from("profiles")
-        .update({ tokens_used: profile.tokens_used + tokensUsed })
-        .eq("id", user.id);
+    const newTotal = tokensUsedSoFar + tokensUsedNow;
 
+    // Prova prima con admin (service role). Se manca, tenta con client normale.
+    try {
+        const admin = supabaseAdmin(); // <-- funzione che crea il client admin
+        await admin.from("profiles").update({ tokens_used: newTotal }).eq("id", user.id);
+    } catch (e) {
+        // Fallback: prova con il client normale (se la RLS lo consente)
+        try {
+            await supabase.from("profiles").update({ tokens_used: newTotal }).eq("id", user.id);
+        } catch (e2) {
+            console.error("Update tokens fallito:", e, e2);
+            // non blocchiamo la risposta all’utente se la scrittura token fallisce
+        }
+    }
+
+    // 9) Salva risposta AI
     await supabase.from("ai_messages").insert({
         thread_id: threadId,
         user_id: user.id,
@@ -118,9 +168,11 @@ export async function POST(req) {
         content: aiReply,
     });
 
-    return Response.json({
+    // 10) Risposta finale
+    return NextResponse.json({
         reply: aiReply,
-        tokens_used_now: profile.tokens_used + tokensUsed,
-        token_limit: profile.token_limit,
+        tokens_used_now: newTotal,
+        token_limit: tokenLimit || null,
     });
 }
+
