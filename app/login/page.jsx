@@ -14,8 +14,10 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
-    // legge ?redirect=/qualcosa oppure default "/ai"
-    const redirect = useMemo(() => decodeURIComponent(search.get("redirect") || "/ai"), [search]);
+    const redirect = useMemo(
+        () => decodeURIComponent(search.get("redirect") || "/ai"),
+        [search]
+    );
 
     async function handleLogin(e) {
         e.preventDefault();
@@ -23,14 +25,18 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            console.log("[LOGIN] start", { email, redirect });
+
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password,
             });
 
+            console.log("[LOGIN] signIn result", { data, error });
+
             if (error) {
-                // gestisci caso email non confermata
-                if (error.message?.toLowerCase().includes("confirm")) {
+                const msg = error.message?.toLowerCase() || "";
+                if (msg.includes("confirm")) {
                     setError("Devi prima confermare l’email dal link che ti abbiamo inviato.");
                 } else {
                     setError(error.message || "Credenziali non valide.");
@@ -38,10 +44,23 @@ export default function LoginPage() {
                 return;
             }
 
-            // redirect dopo login
+            // Controllo sessione subito dopo
+            const { data: sess } = await supabase.auth.getSession();
+            console.log("[LOGIN] getSession after signIn", sess);
+
+            if (!sess?.session) {
+                setError(
+                    "Accesso non riuscito (nessuna sessione). Verifica che l’email sia confermata."
+                );
+                return;
+            }
+
+            // Redirect sicuro
             router.replace(redirect || "/ai");
             router.refresh();
+            console.log("[LOGIN] redirect→", redirect || "/ai");
         } catch (err) {
+            console.error("[LOGIN] exception", err);
             setError("Errore di rete. Riprova.");
         } finally {
             setLoading(false);
@@ -60,6 +79,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                 />
                 <input
                     type="password"
@@ -68,6 +88,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    autoComplete="current-password"
                 />
 
                 {error && <p className="text-red-600 text-sm">{error}</p>}
@@ -82,11 +103,18 @@ export default function LoginPage() {
             </form>
 
             <p className="mt-4 text-sm">
-                Non hai un account?{" "}
-                <a className="underline" href="/signup">
-                    Registrati
-                </a>
+                Non hai un account? <a className="underline" href="/signup">Registrati</a>
             </p>
+
+            {/* Pulsante fallback utile per capire se il redirect è bloccato */}
+            <div className="mt-4">
+                <button
+                    onClick={() => { console.log("[LOGIN] manual goto", redirect); router.replace(redirect); }}
+                    className="underline text-sm"
+                >
+                    Vai manualmente a {redirect}
+                </button>
+            </div>
         </div>
     );
 }
