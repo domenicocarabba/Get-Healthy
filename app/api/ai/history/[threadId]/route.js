@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseServer } from "@/lib/ai/supabaseServer";
 
 export async function GET(_req, { params }) {
     const { threadId } = params;

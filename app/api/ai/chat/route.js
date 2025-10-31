@@ -1,4 +1,4 @@
-import { supabaseServer, supabaseAdmin } from "@/lib/supabaseServer";
+import { supabaseServer, supabaseAdmin } from "@/lib/ai/supabaseServer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
