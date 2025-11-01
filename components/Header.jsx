@@ -12,12 +12,13 @@ export default function Header() {
 
     useEffect(() => {
         sb.auth.getUser().then(({ data }) => setUser(data?.user || null));
-        const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setUser(s?.user || null));
-        return () => sub?.subscription?.unsubscribe();
+        const { data: { subscription } } = sb.auth.onAuthStateChange((_e, session) => {
+            setUser(session?.user || null);
+        });
+        return () => subscription?.unsubscribe();
     }, [sb]);
 
     async function logout() {
-        // logout lato client + lato server (pulizia cookie SSR)
         try { await fetch("/api/account/logout", { method: "POST" }); } catch { }
         await sb.auth.signOut();
         setOpen(false);
@@ -33,9 +34,14 @@ export default function Header() {
                 <nav className="flex items-center gap-6">
                     <Link href="/ricette" className="text-sm">Ricette</Link>
                     <Link href="/ai" className="text-sm">AI</Link>
+                    {/* ✅ Piani sempre visibile */}
+                    <Link href="/piani" className="text-sm">Piani</Link>
 
                     {!user ? (
-                        <Link href="/login" className="rounded bg-black text-white px-3 py-1.5 text-sm">
+                        <Link
+                            href="/login"
+                            className="rounded bg-black text-white px-3 py-1.5 text-sm"
+                        >
                             Accedi
                         </Link>
                     ) : (

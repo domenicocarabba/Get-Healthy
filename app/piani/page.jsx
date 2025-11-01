@@ -1,14 +1,27 @@
-// app/pricing/page.jsx
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabaseClient } from "@/lib/ai/supabaseClient";
 
 export default function PricingPage() {
     const router = useRouter();
+    const sb = supabaseClient();
+    const [user, setUser] = useState(null);
 
-    function choose(target) {
-        router.push(target);
+    useEffect(() => {
+        sb.auth.getUser().then(({ data }) => setUser(data?.user || null));
+    }, [sb]);
+
+    function go(plan) {
+        const checkout = `/checkout?plan=${encodeURIComponent(plan)}`;
+        // se non loggato → vai a signup con redirect al checkout
+        if (!user) {
+            router.push(`/signup?redirect=${encodeURIComponent(checkout)}`);
+            return;
+        }
+        // se loggato → vai diretto al checkout
+        router.push(checkout);
     }
 
     return (
@@ -17,9 +30,7 @@ export default function PricingPage() {
                 Scegli il tuo piano
             </h1>
             <p className="text-center text-gray-600 mb-12">
-                Tutti i piani usano{" "}
-                <b>Gemini&nbsp;2.5&nbsp;Flash&nbsp;Image&nbsp;Preview</b>, con limiti di
-                token e priorità diversi.
+                Tutti i piani usano <b>Gemini 2.5 Flash Image Preview</b>, con limiti di token e priorità diversi.
             </p>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -34,10 +45,7 @@ export default function PricingPage() {
                         <li>• Tetto mensile: <b>40.000 token</b></li>
                         <li>• Ricette e consigli base</li>
                     </ul>
-                    <button
-                        onClick={() => choose("/ai?plan=base")}
-                        className="w-full rounded-lg border px-4 py-2 hover:bg-gray-50"
-                    >
+                    <button onClick={() => go("base")} className="w-full rounded-lg border px-4 py-2 hover:bg-gray-50">
                         Resta su Base
                     </button>
                 </div>
@@ -57,18 +65,9 @@ export default function PricingPage() {
                         <li>• Ricette dettagliate con macro e tempi</li>
                         <li>• Cronologia chat e suggerimenti smart</li>
                     </ul>
-                    <button
-                        onClick={() => choose("/checkout?plan=plus")}
-                        className="w-full rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700"
-                    >
+                    <button onClick={() => go("plus")} className="w-full rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700">
                         Attiva Plus
                     </button>
-                    <div className="text-center text-xs text-gray-500 mt-2">
-                        Oppure{" "}
-                        <Link href="/ai" className="text-green-600 underline">
-                            prova la chat
-                        </Link>
-                    </div>
                 </div>
 
                 {/* PRO */}
@@ -83,10 +82,7 @@ export default function PricingPage() {
                         <li>• Piani alimentari personalizzati e shopping list</li>
                         <li>• Esportazione PDF / CSV e preferenze ingredienti</li>
                     </ul>
-                    <button
-                        onClick={() => choose("/checkout?plan=pro")}
-                        className="w-full rounded-lg bg-black text-white px-4 py-2 hover:bg-gray-900"
-                    >
+                    <button onClick={() => go("pro")} className="w-full rounded-lg bg-black text-white px-4 py-2 hover:bg-gray-900">
                         Attiva Pro
                     </button>
                 </div>

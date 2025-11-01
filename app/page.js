@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -31,9 +32,15 @@ export default function HomePage() {
         </p>
 
         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-          <a href="#start" className="btn btn-primary">
+          {/* ✅ porta alla pagina Piani */}
+          <Link
+            href="/piani"
+            className="btn btn-primary inline-flex items-center justify-center"
+          >
             Inizia ora
-          </a>
+          </Link>
+
+          {/* Lasciamo il link alla sezione caratteristiche */}
           <a href="#features" className="btn btn-secondary">
             Scopri ricette
           </a>
