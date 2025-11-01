@@ -7,13 +7,19 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AIPage() {
-    const supabase = supabaseServer();
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user;
+    let user = null;
 
-    // 🔒 Nessuna sessione → mostra messaggio di login
+    // Proteggi la lettura della sessione da errori SSR/env
+    try {
+        const supabase = supabaseServer();
+        const { data: { session } } = await supabase.auth.getSession();
+        user = session?.user || null;
+    } catch (e) {
+        console.error("AIPage session error:", e);
+        user = null; // fallback sicuro
+    }
+
+    // 🔒 Nessuna sessione → messaggio login
     if (!user) {
         return (
             <div className="max-w-3xl mx-auto pt-24 px-6 text-center">
@@ -42,14 +48,13 @@ export default async function AIPage() {
         );
     }
 
-    // ✅ Se l’utente è autenticato → mostra l’interfaccia AI
+    // ✅ Utente autenticato → interfaccia AI
     return (
         <div className="max-w-5xl mx-auto pt-24 px-6">
             <h1 className="text-3xl font-semibold mb-4">Le tue chat</h1>
             <p className="text-gray-600 mb-8">
                 Benvenuto, <strong>{user.email}</strong>
             </p>
-
             <AIHome />
         </div>
     );
