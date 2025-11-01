@@ -1,27 +1,30 @@
+// /app/piani/page.jsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/ai/supabaseClient";
 
-export default function PricingPage() {
+export default function PianiPage() {
     const router = useRouter();
     const sb = supabaseClient();
     const [user, setUser] = useState(null);
 
     useEffect(() => {
         sb.auth.getUser().then(({ data }) => setUser(data?.user || null));
+        const { data: { subscription } } = sb.auth.onAuthStateChange((_e, session) => {
+            setUser(session?.user || null);
+        });
+        return () => subscription?.unsubscribe();
     }, [sb]);
 
     function go(plan) {
         const checkout = `/checkout?plan=${encodeURIComponent(plan)}`;
-        // se non loggato → vai a signup con redirect al checkout
         if (!user) {
-            router.push(`/signup?redirect=${encodeURIComponent(checkout)}`);
+            router.push(`/signup?redirect=${encodeURIComponent(checkout)}`); // non loggato -> signup
             return;
         }
-        // se loggato → vai diretto al checkout
-        router.push(checkout);
+        router.push(checkout); // loggato -> checkout diretto (Stripe per plus/pro)
     }
 
     return (

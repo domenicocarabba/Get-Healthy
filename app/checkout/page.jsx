@@ -1,77 +1,56 @@
 "use client";
 
-import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { supabaseClient } from "@/lib/ai/supabaseClient";
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-export default function SignUpPage() {
+export default function CheckoutPage() {
     const router = useRouter();
     const search = useSearchParams();
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [err, setErr] = useState("");
-    const [ok, setOk] = useState("");
+    const plan = (search.get("plan") || "base").toLowerCase();
+    const sb = supabaseClient();
 
-    async function signUp(e) {
-        e.preventDefault();
-        setErr(""); setOk("");
+    useEffect(() => {
+        (async () => {
+            // 1) must be logged in
+            const { data } = await sb.auth.getUser();
+            if (!data?.user) {
+                const here = `/checkout?plan=${encodeURIComponent(plan)}`;
+                router.replace(`/signup?redirect=${encodeURIComponent(here)}`);
+                return;
+            }
 
-        const origin =
-            typeof window !== "undefined"
-                ? window.location.origin
-                : process.env.NEXT_PUBLIC_SITE_URL;
+            // 2) base -> niente Stripe
+            if (plan === "base") {
+                router.replace("/success?plan=base");
+                return;
+            }
 
-        const next = search.get("next") || "/ai";
-
-        const { error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`
-            },
-        });
-
-        if (error) return setErr(error.message);
-        setOk("✅ Controlla la tua email per confermare l’account.");
-    }
+            // 3) plus/pro -> chiama la tua API
+            try {
+                const res = await fetch("/api/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan }),
+                });
+                const json = await res.json();
+                if (json?.url) {
+                    window.location.href = json.url;
+                } else {
+                    alert(json?.error || "Errore durante il checkout");
+                    router.replace("/piani");
+                }
+            } catch {
+                alert("Errore di rete durante il checkout");
+                router.replace("/piani");
+            }
+        })();
+    }, [plan, router, sb]);
 
     return (
-        <div className="max-w-md mx-auto pt-24 px-6">
-            <h1 className="text-2xl font-semibold mb-6">Crea il tuo account</h1>
-            <form onSubmit={signUp} className="grid gap-3">
-                <input
-                    className="border p-2 rounded"
-                    placeholder="Email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                />
-                <input
-                    className="border p-2 rounded"
-                    placeholder="Password"
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                />
-                <button className="border rounded p-2 hover:bg-gray-100">Registrati</button>
-            </form>
-
-            {err && <p className="text-red-600 mt-3">{err}</p>}
-            {ok && <p className="text-green-600 mt-3">{ok}</p>}
-
-            <p className="mt-4 text-sm">
-                Hai già un account?{" "}
-                <a
-                    className="underline"
-                    href={`/login?next=${encodeURIComponent(search.get("next") || "/ai")}`}
-                >
-                    Accedi
-                </a>
-            </p>
-        </div>
+        <main className="max-w-xl mx-auto px-6 pt-28 pb-20 text-center">
+            <h1 className="text-2xl font-semibold mb-2">Reindirizzamento al pagamento…</h1>
+            <p className="text-gray-600">Attendi qualche istante.</p>
+        </main>
     );
 }
