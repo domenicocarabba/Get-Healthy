@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/ai/supabaseClient";
 
-function sanitizeNext(raw) {
+function safeNext(raw) {
     const bad = ["/login", "/signup", "/auth/callback"];
     try {
         const n = raw || "/ai?open=chat";
-        const urlOnly = n.split("#")[0];
-        const path = urlOnly.split("?")[0];
+        const clean = n.split("#")[0];
+        const path = clean.split("?")[0];
         if (bad.includes(path)) return "/ai?open=chat";
-        return urlOnly.startsWith("/") ? urlOnly : "/ai?open=chat";
+        return clean.startsWith("/") ? clean : "/ai?open=chat";
     } catch {
         return "/ai?open=chat";
     }
@@ -19,7 +19,7 @@ function sanitizeNext(raw) {
 
 export default function LoginPage() {
     const search = useSearchParams();
-    const supabase = supabaseClient();
+    const sp = supabaseClient();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -29,23 +29,8 @@ export default function LoginPage() {
     const nextUrl = useMemo(() => {
         const n = search.get("next");
         const r = search.get("redirect");
-        return sanitizeNext(decodeURIComponent(n || r || "/ai?open=chat"));
+        return safeNext(decodeURIComponent(n || r || "/ai?open=chat"));
     }, [search]);
-
-    // ✅ Se arrivi qui già autenticato (tipico dopo aver cliccato la mail), vai SUBITO in /ai
-    useEffect(() => {
-        (async () => {
-            try {
-                const { data } = await supabase.auth.getUser();
-                if (data?.user) {
-                    window.location.replace(nextUrl);
-                }
-            } catch (e) {
-                // non bloccare la pagina
-                console.warn("[LOGIN] getUser failed", e);
-            }
-        })();
-    }, [supabase, nextUrl]);
 
     async function handleLogin(e) {
         e.preventDefault();
@@ -53,7 +38,7 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            const { error } = await sp.auth.signInWithPassword({
                 email: email.trim(),
                 password,
             });
@@ -68,22 +53,18 @@ export default function LoginPage() {
                 return;
             }
 
-            // ⛳️ Redirect HARD immediato (il middleware vedrà i cookie alla nuova richiesta)
+            // forza subito i token e VAI
+            await sp.auth.refreshSession();
             const dest = nextUrl || "/ai?open=chat";
             try {
                 window.location.assign(dest);
             } catch {
-                window.location.href = dest; // fallback
+                window.location.href = dest;
             }
-
-            // ⛑️ Ulteriore fallback se per qualche ragione il browser non naviga
             setTimeout(() => {
-                if (location.pathname === "/login") {
-                    window.location.href = dest;
-                }
+                if (location.pathname === "/login") window.location.href = dest;
             }, 800);
-        } catch (err) {
-            console.error("[LOGIN] exception", err);
+        } catch {
             setError("Errore di rete. Riprova.");
         } finally {
             setLoading(false);
