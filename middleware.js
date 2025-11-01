@@ -1,45 +1,36 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 
 export async function middleware(req) {
     const res = NextResponse.next();
+    const supabase = createMiddlewareClient({ req, res });
 
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        {
-            cookies: {
-                get: (key) => req.cookies.get(key)?.value,
-            },
-        }
-    );
+    // Ottieni la sessione attuale (se l'utente è loggato)
+    const {
+        data: { session },
+    } = await supabase.auth.getSession();
 
-    const { data } = await supabase.auth.getSession();
-    const session = data?.session;
+    const url = req.nextUrl;
+    const pathname = url.pathname;
+    const search = url.search || "";
 
-    const path = req.nextUrl.pathname;
-    const isAuthPage = path.startsWith("/login");
-    const wantsAI = path.startsWith("/ai");
+    // Definisce quali pagine sono "protette"
+    const isProtected =
+        pathname.startsWith("/ai") || pathname.startsWith("/account");
 
-    // Se non loggato e prova ad accedere a /ai → redirect al login
-    if (!session && wantsAI) {
-        const redirectUrl = req.nextUrl.clone();
-        redirectUrl.pathname = "/login";
-        redirectUrl.searchParams.set("next", path);
-        return NextResponse.redirect(redirectUrl);
+    // Se NON loggato e tenta di accedere a una pagina protetta → reindirizza al login
+    if (!session && isProtected) {
+        const loginUrl = url.clone();
+        loginUrl.pathname = "/login";
+        loginUrl.searchParams.set("next", pathname + search);
+        return NextResponse.redirect(loginUrl);
     }
 
-    // Se già loggato e prova ad accedere al login → redirect ad /ai
-    if (session && isAuthPage) {
-        const redirectUrl = req.nextUrl.clone();
-        redirectUrl.pathname = "/ai";
-        return NextResponse.redirect(redirectUrl);
-    }
-
+    // Se è loggato oppure è su una pagina pubblica → continua
     return res;
 }
 
-// Pagine a cui il middleware si applica
+// Limita il middleware solo alle sezioni che ti servono
 export const config = {
-    matcher: ["/ai", "/login"],
+    matcher: ["/ai/:path*", "/account/:path*"],
 };

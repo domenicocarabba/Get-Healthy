@@ -1,8 +1,7 @@
 "use client";
 
+// disattiva il prerendering per questa pagina
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "default-no-store";
 
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
@@ -12,12 +11,12 @@ export default function AuthCallbackPage() {
     const search = useSearchParams();
 
     useEffect(() => {
-        const sp = supabaseClient(); // <-- crea il client SOLO sul client, dentro useEffect
+        const sp = supabaseClient(); // crea il client solo sul browser
 
         (async () => {
             const next = search.get("next") || "/ai";
 
-            // 1) Caso HASH: #access_token & #refresh_token
+            // 1) Caso hash: #access_token / #refresh_token
             if (typeof window !== "undefined" && window.location.hash?.length > 1) {
                 const hash = new URLSearchParams(window.location.hash.slice(1));
                 const access_token = hash.get("access_token");
@@ -31,7 +30,7 @@ export default function AuthCallbackPage() {
                 }
             }
 
-            // 2) Caso CODE: ?code=...
+            // 2) Caso code: ?code=...
             const code = search.get("code");
             if (code) {
                 const { error } = await sp.auth.exchangeCodeForSession(code);
@@ -41,7 +40,7 @@ export default function AuthCallbackPage() {
                 }
             }
 
-            // 3) Se già loggato comunque, vai a /ai
+            // 3) Se l'utente risulta già loggato, vai comunque su /ai
             try {
                 const { data } = await sp.auth.getUser();
                 if (data?.user) {
@@ -50,7 +49,7 @@ export default function AuthCallbackPage() {
                 }
             } catch { }
 
-            // 4) Fallback: porta al login con next
+            // 4) Fallback: porta al login (niente loop perché il middleware non intercetta /auth/callback)
             window.location.replace(`/login?next=${encodeURIComponent(next)}`);
         })();
     }, [search]);
