@@ -1,47 +1,36 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/ai/supabaseServer";
+import { supabaseRoute } from "@/lib/ai/supabaseServer";
 
-export async function POST() {
+// POST /api/ai/thread  { title?: string }
+export async function POST(req) {
     try {
-        const supabase = supabaseServer();
+        const supabase = supabaseRoute();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        // Recupera l’utente loggato
-        const {
-            data: { user },
-            error: userError,
-        } = await supabase.auth.getUser();
+        let title = "Nuova chat";
+        try {
+            const body = await req.json();
+            if (body?.title && typeof body.title === "string") {
+                title = body.title.trim() || title;
+            }
+        } catch { /* body vuoto ok */ }
 
-        if (userError) {
-            console.error("Errore autenticazione Supabase:", userError);
-            return NextResponse.json({ error: userError.message }, { status: 401 });
-        }
-
-        if (!user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        // Crea un nuovo thread per l’utente
         const { data, error } = await supabase
-            .from("ai_threads")
-            .insert({
-                user_id: user.id,
-                title: "Nuova chat",
-            })
-            .select()
+            .from("threads")
+            .insert([{ user_id: user.id, title }])
+            .select("id, title, created_at, updated_at")
             .single();
 
-        if (error) {
-            console.error("Errore inserimento ai_threads:", error);
-            return NextResponse.json({ error: error.message }, { status: 400 });
-        }
+        if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-        // Restituisce il nuovo thread creato
         return NextResponse.json({ thread: data }, { status: 201 });
-    } catch (err) {
-        console.error("Crash /api/ai/thread POST:", err);
-        return NextResponse.json(
-            { error: String(err?.message || err) },
-            { status: 500 }
-        );
+    } catch (e) {
+        console.error("POST /api/ai/thread error", e);
+        return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 }

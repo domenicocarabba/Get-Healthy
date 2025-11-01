@@ -1,41 +1,37 @@
-// /app/api/ai/history/[threadId]/route.js
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 import { supabaseRoute } from "@/lib/ai/supabaseServer";
 
 export async function GET(_req, { params }) {
-    const threadId = params?.threadId;
-    if (!threadId) {
-        return NextResponse.json({ error: "threadId mancante" }, { status: 400 });
-    }
-
     const supabase = supabaseRoute();
-    const {
-        data: { session },
-        error: sessErr,
-    } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (sessErr) {
-        return NextResponse.json({ error: `Errore sessione: ${sessErr.message}` }, { status: 500 });
+    const threadId = params.threadId;
+
+    // sicuro che il thread è tuo
+    const { data: thread, error: thErr } = await supabase
+        .from("threads")
+        .select("id")
+        .eq("id", threadId)
+        .eq("user_id", user.id)
+        .single();
+
+    if (thErr || !thread) {
+        return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
-    if (!session?.user) {
-        return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
 
-    // Facoltativo: qui potresti verificare che l'utente sia owner del thread
-    // con una query alla tabella "threads" (RLS dovrebbe già proteggerlo).
-
-    const { data, error } = await supabase
-        .from("ai_messages")
-        .select("id, thread_id, user_id, role, content, created_at")
+    const { data: messages, error } = await supabase
+        .from("messages")
+        .select("id, role, content, created_at")
         .eq("thread_id", threadId)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: true });
 
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-    return NextResponse.json({ messages: data || [] });
+    return NextResponse.json({ messages: messages || [] });
 }
-
