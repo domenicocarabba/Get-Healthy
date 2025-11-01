@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/ai/supabaseClient";
 
 export default function LoginPage() {
     const supabase = supabaseBrowser();
