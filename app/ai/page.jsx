@@ -1,50 +1,48 @@
-"use client";
+import { supabaseServer } from "@/lib/ai/supabaseServer";
+import AIHome from "./AIHome";
+import Link from "next/link";
 
-import { useEffect, useState } from "react";
-import { supabaseClient } from "@/lib/ai/supabaseClient";
-import AIHome from "./AIHome"; // il tuo componente client
+export default async function AIPage() {
+    const supabase = supabaseServer();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
 
-export default function AIPage() {
-    const supabase = supabaseClient();
-    const [ready, setReady] = useState(false);
-    const [userEmail, setUserEmail] = useState("");
-
-    useEffect(() => {
-        (async () => {
-            try {
-                const { data } = await supabase.auth.getUser();
-                if (!data?.user) {
-                    // non loggato → porta al login
-                    window.location.replace("/login?next=/ai");
-                    return;
-                }
-                setUserEmail(data.user.email || "");
-            } catch {
-                // in caso di errore, manda comunque al login
-                window.location.replace("/login?next=/ai");
-                return;
-            }
-            setReady(true);
-        })();
-    }, [supabase]);
-
-    if (!ready) {
+    // se non c'è sessione → mostra messaggio di login
+    if (!user) {
         return (
-            <div className="max-w-4xl mx-auto pt-24 px-6">
-                <p>Caricamento…</p>
+            <div className="max-w-3xl mx-auto pt-24 px-6 text-center">
+                <h1 className="text-3xl font-semibold mb-6">Accedi per usare l’AI</h1>
+                <p className="text-gray-600 mb-8">
+                    Per iniziare a creare i tuoi piani e ricette personalizzati, accedi o crea un account gratuito.
+                </p>
+                <div className="flex justify-center gap-4">
+                    <Link
+                        href="/accedi"
+                        className="bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition"
+                    >
+                        Accedi
+                    </Link>
+                    <Link
+                        href="/registrati"
+                        className="border border-black px-6 py-3 rounded-lg hover:bg-gray-100 transition"
+                    >
+                        Crea account
+                    </Link>
+                </div>
             </div>
         );
     }
 
+    // se c’è sessione → mostra le chat
     return (
         <div className="max-w-4xl mx-auto pt-24 px-6">
-            <h1 className="text-3xl font-semibold mb-2">Le tue chat</h1>
-            {userEmail && (
-                <p className="text-gray-600 mb-6">
-                    Benvenuto, <strong>{userEmail}</strong>
-                </p>
-            )}
+            <h1 className="text-3xl font-semibold mb-4">Le tue chat</h1>
+            <p className="text-gray-600 mb-6">
+                Benvenuto, <strong>{user.email}</strong>
+            </p>
+
             <AIHome />
         </div>
     );
 }
+
