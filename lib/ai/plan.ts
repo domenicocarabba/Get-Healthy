@@ -1,45 +1,71 @@
-// /lib/plan.ts
-export type Plan = "base" | "plus" | "pro";
+// /lib/ai/plans.js
+// Definizione limiti token mensili e helper piano utente
 
-export const PLANS: Record<Plan, { name: string; maxOutput: number; monthlyCap: number; rps: number }> = {
-    base: { name: "Base", maxOutput: 512, monthlyCap: 40_000, rps: 1 },
-    plus: { name: "Plus", maxOutput: 1024, monthlyCap: 300_000, rps: 3 },
-    pro: { name: "Pro", maxOutput: 2048, monthlyCap: 1_000_000, rps: 6 },
+export const PLAN_LIMITS = {
+    base: 50_000,     // token mensili stimati (~12.5k parole)
+    plus: 300_000,
+    pro: 1_000_000,
 };
 
-export function getActivePlan(): Plan {
-    if (typeof window === "undefined") return "base";
-    const v = (localStorage.getItem("gh_plan") || "base") as Plan;
-    return (["base", "plus", "pro"] as Plan[]).includes(v) ? v : "base";
+/**
+ * Normalizza un nome piano — se non riconosciuto, ritorna 'base'
+ */
+export function normalizePlan(plan) {
+    if (plan === "plus" || plan === "pro") return plan;
+    return "base";
 }
 
-// ---- Simple usage meter (MVP) ----
-type Usage = { month: string; tokens: number };
-const USAGE_KEY = "gh_usage_v1";
-
-export function getUsage(): Usage {
-    if (typeof window === "undefined") return { month: "server", tokens: 0 };
-    const now = new Date();
-    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-    try {
-        const raw = JSON.parse(localStorage.getItem(USAGE_KEY) || "{}");
-        if (!raw.month || raw.month !== monthKey) return { month: monthKey, tokens: 0 };
-        return { month: raw.month, tokens: Number(raw.tokens) || 0 };
-    } catch {
-        return { month: monthKey, tokens: 0 };
-    }
+/**
+ * Ritorna il limite token mensile per il piano dato
+ */
+export function planLimit(plan) {
+    return PLAN_LIMITS[normalizePlan(plan)] || PLAN_LIMITS.base;
 }
 
-export function addUsage(tokens: number) {
-    if (typeof window === "undefined") return;
-    const now = new Date();
-    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-    const cur = getUsage();
-    const next: Usage = { month: monthKey, tokens: (cur.tokens || 0) + Math.max(0, tokens || 0) };
-    localStorage.setItem(USAGE_KEY, JSON.stringify(next));
+/**
+ * (Facoltativo) Ritorna la descrizione visiva del piano
+ */
+export function planName(plan) {
+    const names = {
+        base: "Base",
+        plus: "Plus",
+        pro: "Pro",
+    };
+    return names[normalizePlan(plan)] || "Base";
 }
 
-export function resetUsageIfNewMonth() {
-    // basta chiamare getUsage(); fa già rollover
-    getUsage();
-}
+/**
+ * (Facoltativo) Tabella descrittiva se ti serve nel pricing o profilo
+ */
+export const PLAN_INFO = {
+    base: {
+        name: "Base",
+        price: "Gratis",
+        tokens: "50 000/mese",
+        features: [
+            "Risposte testuali base",
+            "Accesso al modello Gemini 1.5 Flash",
+            "Limite di 50 000 token al mese",
+        ],
+    },
+    plus: {
+        name: "Plus",
+        price: "€9,90/mese",
+        tokens: "300 000/mese",
+        features: [
+            "Risposte più lunghe e dettagliate",
+            "Gemini 1.5 Flash + ChatGPT",
+            "Limite di 300 000 token al mese",
+        ],
+    },
+    pro: {
+        name: "Pro",
+        price: "€29,90/mese",
+        tokens: "1 000 000/mese",
+        features: [
+            "Accesso completo a tutti i modelli AI",
+            "Priorità e latenza ridotta",
+            "Limite di 1 000 000 token al mese",
+        ],
+    },
+};

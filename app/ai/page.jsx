@@ -1,19 +1,28 @@
+// /app/ai/page.jsx
 import { supabaseServer } from "@/lib/ai/supabaseServer";
 import AIHome from "./AIHome";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AIPage() {
     const supabase = supabaseServer();
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+        data: { session },
+    } = await supabase.auth.getSession();
     const user = session?.user;
 
-    // se non c'è sessione → mostra messaggio di login
+    // 🔒 Nessuna sessione → mostra messaggio di login
     if (!user) {
         return (
             <div className="max-w-3xl mx-auto pt-24 px-6 text-center">
-                <h1 className="text-3xl font-semibold mb-6">Accedi per usare l’AI</h1>
+                <h1 className="text-3xl font-semibold mb-6">
+                    Accedi per usare l’intelligenza artificiale di Get Healthy
+                </h1>
                 <p className="text-gray-600 mb-8">
-                    Per iniziare a creare i tuoi piani e ricette personalizzati, accedi o crea un account gratuito.
+                    Per iniziare a creare piani personalizzati, ricevere ricette e accedere al tuo assistente AI,
+                    accedi o crea un account gratuito.
                 </p>
                 <div className="flex justify-center gap-4">
                     <Link
@@ -33,11 +42,11 @@ export default async function AIPage() {
         );
     }
 
-    // se c’è sessione → mostra le chat
+    // ✅ Se l’utente è autenticato → mostra l’interfaccia AI
     return (
-        <div className="max-w-4xl mx-auto pt-24 px-6">
+        <div className="max-w-5xl mx-auto pt-24 px-6">
             <h1 className="text-3xl font-semibold mb-4">Le tue chat</h1>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-8">
                 Benvenuto, <strong>{user.email}</strong>
             </p>
 
@@ -45,4 +54,3 @@ export default async function AIPage() {
         </div>
     );
 }
-
