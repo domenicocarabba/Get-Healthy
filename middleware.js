@@ -8,17 +8,46 @@ export async function middleware(req) {
     // Aggiorna/crea i cookie di sessione se servono
     const { data: { session } } = await supabase.auth.getSession();
 
-    const pathname = req.nextUrl.pathname;
-    if (!session && pathname.startsWith("/ai")) {
-        const url = req.nextUrl.clone();
-        url.pathname = "/login";
-        url.searchParams.set("redirect", pathname);
-        return NextResponse.redirect(url);
+    const url = req.nextUrl;
+    const pathname = url.pathname;
+    const search = url.search || "";
+
+    // Pagine/aree da proteggere
+    const protectedRoots = ["/ai", "/account"];
+    const isProtected = protectedRoots.some((p) => pathname.startsWith(p));
+
+    // Evita di toccare la callback di Supabase
+    const isAuthCallback = pathname.startsWith("/auth/callback");
+
+    // Se NON loggato e tenta di accedere a rotta protetta → login con next & redirect
+    if (!session && isProtected && !isAuthCallback) {
+        const loginUrl = url.clone();
+        loginUrl.pathname = "/login";
+        loginUrl.searchParams.set("next", pathname + search);     // standard
+        loginUrl.searchParams.set("redirect", pathname + search); // compat con vecchio codice
+        return NextResponse.redirect(loginUrl);
+    }
+
+    // Se loggato e va su /login o /signup → mandalo dove serve (next o /ai?open=chat)
+    const isLoginOrSignup = pathname === "/login" || pathname === "/signup";
+    if (session && isLoginOrSignup) {
+        const next = url.searchParams.get("next") || url.searchParams.get("redirect") || "/ai?open=chat";
+        const dest = url.clone();
+        dest.pathname = next.startsWith("/") ? next.split("?")[0] : "/ai";
+        const qs = next.includes("?") ? next.slice(next.indexOf("?")) : "";
+        return NextResponse.redirect(new URL(dest.pathname + qs, url.origin));
     }
 
     return res;
 }
 
+// Intercetta SOLO ciò che serve (performance & niente loop)
 export const config = {
-    matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+    matcher: [
+        "/ai/:path*",
+        "/account/:path*",
+        "/login",
+        "/signup",
+        "/auth/callback",
+    ],
 };

@@ -14,10 +14,12 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
-    const redirect = useMemo(
-        () => decodeURIComponent(search.get("redirect") || "/ai"),
-        [search]
-    );
+    // Supporta sia ?next=... che ?redirect=...
+    const nextUrl = useMemo(() => {
+        const n = search.get("next");
+        const r = search.get("redirect");
+        return decodeURIComponent(n || r || "/ai?open=chat");
+    }, [search]);
 
     async function handleLogin(e) {
         e.preventDefault();
@@ -25,7 +27,7 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            console.log("[LOGIN] start", { email, redirect });
+            console.log("[LOGIN] start", { email, nextUrl });
 
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
@@ -35,7 +37,7 @@ export default function LoginPage() {
             console.log("[LOGIN] signIn result", { data, error });
 
             if (error) {
-                const msg = error.message?.toLowerCase() || "";
+                const msg = (error.message || "").toLowerCase();
                 if (msg.includes("confirm")) {
                     setError("Devi prima confermare l’email dal link che ti abbiamo inviato.");
                 } else {
@@ -44,21 +46,19 @@ export default function LoginPage() {
                 return;
             }
 
-            // Controllo sessione subito dopo
+            // Verifica sessione subito dopo il login
             const { data: sess } = await supabase.auth.getSession();
             console.log("[LOGIN] getSession after signIn", sess);
 
             if (!sess?.session) {
-                setError(
-                    "Accesso non riuscito (nessuna sessione). Verifica che l’email sia confermata."
-                );
+                setError("Accesso non riuscito (nessuna sessione). Verifica che l’email sia confermata.");
                 return;
             }
 
-            // Redirect sicuro
-            router.replace(redirect || "/ai");
+            // Redirect sicuro: apre direttamente la chat
+            router.replace(nextUrl || "/ai?open=chat");
             router.refresh();
-            console.log("[LOGIN] redirect→", redirect || "/ai");
+            console.log("[LOGIN] redirect →", nextUrl || "/ai?open=chat");
         } catch (err) {
             console.error("[LOGIN] exception", err);
             setError("Errore di rete. Riprova.");
@@ -103,7 +103,13 @@ export default function LoginPage() {
             </form>
 
             <p className="mt-4 text-sm">
-                Non hai un account? <a className="underline" href="/signup">Registrati</a>
+                Non hai un account?{" "}
+                <a
+                    className="underline"
+                    href={`/signup?next=${encodeURIComponent(nextUrl)}`}
+                >
+                    Registrati
+                </a>
             </p>
         </div>
     );

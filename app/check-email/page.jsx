@@ -1,19 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/ai/supabaseClient";
 
 export default function CheckEmailPage() {
-    const router = useRouter();
     const search = useSearchParams();
     const supabase = supabaseClient();
 
     const initialEmail = useMemo(() => search.get("email") || "", [search]);
-    const redirect = useMemo(
-        () => decodeURIComponent(search.get("redirect") || "/ai"),
-        [search]
-    );
 
     const [email, setEmail] = useState(initialEmail);
     const [msg, setMsg] = useState("");
@@ -32,11 +27,17 @@ export default function CheckEmailPage() {
 
         setSending(true);
         try {
+            const origin =
+                typeof window !== "undefined"
+                    ? window.location.origin
+                    : process.env.NEXT_PUBLIC_SITE_URL || "https://gethealthy.it";
+
             const { error } = await supabase.auth.resend({
                 type: "signup",
                 email: email.trim(),
                 options: {
-                    emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "https://gethealthy.it"}/auth/callback`,
+                    // Dopo il click nel link email → callback che crea la sessione → redirect in /ai
+                    emailRedirectTo: `${origin}/auth/callback?next=/ai`,
                 },
             });
 
@@ -58,7 +59,8 @@ export default function CheckEmailPage() {
             <p className="text-sm text-gray-700">
                 Ti abbiamo inviato un messaggio a{" "}
                 <strong>{email || "la tua email"}</strong>.<br />
-                Clicca sul link di conferma nell’email, poi torna qui e accedi.
+                Clicca sul link di conferma nell’email. Dopo la conferma verrai
+                reindirizzato automaticamente all’app.
             </p>
 
             <form onSubmit={resend} className="mt-6 grid gap-3">
@@ -78,13 +80,6 @@ export default function CheckEmailPage() {
                 >
                     {sending ? "Invio..." : "Invia di nuovo l’email"}
                 </button>
-
-                <a
-                    className="underline text-sm"
-                    href={`/login?redirect=${encodeURIComponent(redirect)}`}
-                >
-                    Ho già confermato: vai al login
-                </a>
 
                 {msg && <p className="text-green-700 text-sm">{msg}</p>}
                 {err && <p className="text-red-600 text-sm">{err}</p>}
