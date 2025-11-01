@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/ai/supabaseClient";
 
@@ -16,12 +16,18 @@ export default function LoginPage() {
     const nextUrl = useMemo(() => {
         const n = search.get("next");
         const r = search.get("redirect");
-        try {
-            return decodeURIComponent(n || r || "/ai?open=chat");
-        } catch {
-            return "/ai?open=chat";
-        }
+        return decodeURIComponent(n || r || "/ai");
     }, [search]);
+
+    // Se sei già loggato (magari dopo conferma email) → vai direttamente in /ai
+    useEffect(() => {
+        (async () => {
+            const { data } = await supabase.auth.getUser();
+            if (data?.user) {
+                window.location.replace(nextUrl);
+            }
+        })();
+    }, [supabase, nextUrl]);
 
     async function handleLogin(e) {
         e.preventDefault();
@@ -29,30 +35,26 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            console.log("[LOGIN] start", { nextUrl });
-
             const { error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password,
             });
 
             if (error) {
-                const msg = (error.message || "").toLowerCase();
-                setError(
-                    msg.includes("confirm")
-                        ? "Devi prima confermare l’email dal link che ti abbiamo inviato."
-                        : error.message || "Credenziali non valide."
-                );
+                if (error.message.toLowerCase().includes("confirm")) {
+                    setError("Devi prima confermare l’email dal link che ti abbiamo inviato.");
+                } else {
+                    setError(error.message);
+                }
                 return;
             }
 
-            // forza i token sul client
+            // forza la creazione cookie/sessione
             await supabase.auth.refreshSession();
 
-            // ❗ hard redirect (full reload): così il middleware vede i cookie
+            // redirect reale, così middleware riceve i cookie
             window.location.assign(nextUrl);
         } catch (err) {
-            console.error("[LOGIN] exception", err);
             setError("Errore di rete. Riprova.");
         } finally {
             setLoading(false);
@@ -71,7 +73,6 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    autoComplete="email"
                 />
                 <input
                     type="password"
@@ -80,11 +81,8 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    autoComplete="current-password"
                 />
-
                 {error && <p className="text-red-600 text-sm">{error}</p>}
-
                 <button
                     type="submit"
                     disabled={loading}
