@@ -1,6 +1,4 @@
 "use client";
-
-// disattiva il prerendering per questa pagina
 export const dynamic = "force-dynamic";
 
 import { useEffect } from "react";
@@ -11,45 +9,34 @@ export default function AuthCallbackPage() {
     const search = useSearchParams();
 
     useEffect(() => {
-        const sp = supabaseClient(); // crea il client solo sul browser
+        const sp = supabaseClient();
 
         (async () => {
             const next = search.get("next") || "/ai";
 
-            // 1) Caso hash: #access_token / #refresh_token
+            // #access_token / #refresh_token
             if (typeof window !== "undefined" && window.location.hash?.length > 1) {
                 const hash = new URLSearchParams(window.location.hash.slice(1));
                 const access_token = hash.get("access_token");
                 const refresh_token = hash.get("refresh_token");
                 if (access_token && refresh_token) {
                     const { error } = await sp.auth.setSession({ access_token, refresh_token });
-                    if (!error) {
-                        window.location.replace(next);
-                        return;
-                    }
+                    if (!error) { window.location.replace(next); return; }
                 }
             }
 
-            // 2) Caso code: ?code=...
+            // ?code=...
             const code = search.get("code");
             if (code) {
                 const { error } = await sp.auth.exchangeCodeForSession(code);
-                if (!error) {
-                    window.location.replace(next);
-                    return;
-                }
+                if (!error) { window.location.replace(next); return; }
             }
 
-            // 3) Se l'utente risulta già loggato, vai comunque su /ai
-            try {
-                const { data } = await sp.auth.getUser();
-                if (data?.user) {
-                    window.location.replace(next);
-                    return;
-                }
-            } catch { }
+            // Già loggato?
+            const { data } = await sp.auth.getUser();
+            if (data?.user) { window.location.replace(next); return; }
 
-            // 4) Fallback: porta al login (niente loop perché il middleware non intercetta /auth/callback)
+            // fallback
             window.location.replace(`/login?next=${encodeURIComponent(next)}`);
         })();
     }, [search]);
