@@ -1,18 +1,23 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "default-no-store";
+
 import { useEffect } from "react";
-import { supabaseClient } from "@/lib/ai/supabaseClient";
 import { useSearchParams } from "next/navigation";
+import { supabaseClient } from "@/lib/ai/supabaseClient";
 
 export default function AuthCallbackPage() {
-    const sp = supabaseClient();
     const search = useSearchParams();
 
     useEffect(() => {
+        const sp = supabaseClient(); // <-- crea il client SOLO sul client, dentro useEffect
+
         (async () => {
             const next = search.get("next") || "/ai";
 
-            // 1) #access_token / #refresh_token
+            // 1) Caso HASH: #access_token & #refresh_token
             if (typeof window !== "undefined" && window.location.hash?.length > 1) {
                 const hash = new URLSearchParams(window.location.hash.slice(1));
                 const access_token = hash.get("access_token");
@@ -26,7 +31,7 @@ export default function AuthCallbackPage() {
                 }
             }
 
-            // 2) ?code=...
+            // 2) Caso CODE: ?code=...
             const code = search.get("code");
             if (code) {
                 const { error } = await sp.auth.exchangeCodeForSession(code);
@@ -36,7 +41,7 @@ export default function AuthCallbackPage() {
                 }
             }
 
-            // 3) Se già loggato, vai a /ai
+            // 3) Se già loggato comunque, vai a /ai
             try {
                 const { data } = await sp.auth.getUser();
                 if (data?.user) {
@@ -45,12 +50,10 @@ export default function AuthCallbackPage() {
                 }
             } catch { }
 
-            // 4) Fallback: se proprio non c'è sessione, mostra un messaggio
-            // (niente redirect a /login per evitare loop in questa fase)
-            alert("Non riesco a completare l’accesso dal link. Prova ad accedere manualmente.");
-            window.location.replace("/login?next=/ai");
+            // 4) Fallback: porta al login con next
+            window.location.replace(`/login?next=${encodeURIComponent(next)}`);
         })();
-    }, [sp, search]);
+    }, [search]);
 
     return (
         <div className="max-w-md mx-auto pt-24 px-6">
