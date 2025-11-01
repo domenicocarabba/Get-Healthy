@@ -13,7 +13,6 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
-    // Supporta ?next=... e ?redirect=...
     const nextUrl = useMemo(() => {
         const n = search.get("next");
         const r = search.get("redirect");
@@ -30,7 +29,7 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            console.log("[LOGIN] start", { email, nextUrl });
+            console.log("[LOGIN] start", { nextUrl });
 
             const { error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
@@ -47,12 +46,11 @@ export default function LoginPage() {
                 return;
             }
 
-            // Forza subito la persistenza dei token sul client
+            // forza i token sul client
             await supabase.auth.refreshSession();
 
-            // Redirect HARD (full reload) così il middleware vede i cookie
-            const dest = nextUrl || "/ai?open=chat";
-            window.location.assign(dest);
+            // ❗ hard redirect (full reload): così il middleware vede i cookie
+            window.location.assign(nextUrl);
         } catch (err) {
             console.error("[LOGIN] exception", err);
             setError("Errore di rete. Riprova.");
