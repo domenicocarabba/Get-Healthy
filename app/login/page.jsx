@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/ai/supabaseClient";
 
@@ -32,6 +32,21 @@ export default function LoginPage() {
         return sanitizeNext(decodeURIComponent(n || r || "/ai?open=chat"));
     }, [search]);
 
+    // ✅ Se arrivi qui già autenticato (tipico dopo aver cliccato la mail), vai SUBITO in /ai
+    useEffect(() => {
+        (async () => {
+            try {
+                const { data } = await supabase.auth.getUser();
+                if (data?.user) {
+                    window.location.replace(nextUrl);
+                }
+            } catch (e) {
+                // non bloccare la pagina
+                console.warn("[LOGIN] getUser failed", e);
+            }
+        })();
+    }, [supabase, nextUrl]);
+
     async function handleLogin(e) {
         e.preventDefault();
         setError("");
@@ -53,11 +68,22 @@ export default function LoginPage() {
                 return;
             }
 
-            await supabase.auth.refreshSession();
+            // ⛳️ Redirect HARD immediato (il middleware vedrà i cookie alla nuova richiesta)
+            const dest = nextUrl || "/ai?open=chat";
+            try {
+                window.location.assign(dest);
+            } catch {
+                window.location.href = dest; // fallback
+            }
 
-            // Hard redirect verso una destinazione sicura
-            window.location.assign(nextUrl);
-        } catch {
+            // ⛑️ Ulteriore fallback se per qualche ragione il browser non naviga
+            setTimeout(() => {
+                if (location.pathname === "/login") {
+                    window.location.href = dest;
+                }
+            }, 800);
+        } catch (err) {
+            console.error("[LOGIN] exception", err);
             setError("Errore di rete. Riprova.");
         } finally {
             setLoading(false);
