@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/ai/supabaseClient";
 
 export default function LoginPage() {
-    const router = useRouter();
     const search = useSearchParams();
     const supabase = supabaseClient();
 
@@ -14,11 +13,15 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
-    // Supporta sia ?next=... che ?redirect=...
+    // Supporta ?next=... e ?redirect=...
     const nextUrl = useMemo(() => {
         const n = search.get("next");
         const r = search.get("redirect");
-        return decodeURIComponent(n || r || "/ai?open=chat");
+        try {
+            return decodeURIComponent(n || r || "/ai?open=chat");
+        } catch {
+            return "/ai?open=chat";
+        }
     }, [search]);
 
     async function handleLogin(e) {
@@ -29,36 +32,27 @@ export default function LoginPage() {
         try {
             console.log("[LOGIN] start", { email, nextUrl });
 
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password,
             });
 
-            console.log("[LOGIN] signIn result", { data, error });
-
             if (error) {
                 const msg = (error.message || "").toLowerCase();
-                if (msg.includes("confirm")) {
-                    setError("Devi prima confermare l’email dal link che ti abbiamo inviato.");
-                } else {
-                    setError(error.message || "Credenziali non valide.");
-                }
+                setError(
+                    msg.includes("confirm")
+                        ? "Devi prima confermare l’email dal link che ti abbiamo inviato."
+                        : error.message || "Credenziali non valide."
+                );
                 return;
             }
 
-            // Verifica sessione subito dopo il login
-            const { data: sess } = await supabase.auth.getSession();
-            console.log("[LOGIN] getSession after signIn", sess);
+            // Forza subito la persistenza dei token sul client
+            await supabase.auth.refreshSession();
 
-            if (!sess?.session) {
-                setError("Accesso non riuscito (nessuna sessione). Verifica che l’email sia confermata.");
-                return;
-            }
-
-            // Redirect sicuro: apre direttamente la chat
-            router.replace(nextUrl || "/ai?open=chat");
-            router.refresh();
-            console.log("[LOGIN] redirect →", nextUrl || "/ai?open=chat");
+            // Redirect HARD (full reload) così il middleware vede i cookie
+            const dest = nextUrl || "/ai?open=chat";
+            window.location.assign(dest);
         } catch (err) {
             console.error("[LOGIN] exception", err);
             setError("Errore di rete. Riprova.");
@@ -104,10 +98,7 @@ export default function LoginPage() {
 
             <p className="mt-4 text-sm">
                 Non hai un account?{" "}
-                <a
-                    className="underline"
-                    href={`/signup?next=${encodeURIComponent(nextUrl)}`}
-                >
+                <a className="underline" href={`/signup?next=${encodeURIComponent(nextUrl)}`}>
                     Registrati
                 </a>
             </p>
