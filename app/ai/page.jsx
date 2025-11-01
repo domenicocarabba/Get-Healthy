@@ -1,32 +1,49 @@
-import { supabaseServer } from "@/lib/ai/supabaseServer";
-import AIHome from "./AIHome"; // lascia il tuo client component
+"use client";
 
-export default async function AIPage() {
-    // Leggi sessione lato server
-    const supabase = supabaseServer();
-    const {
-        data: { session },
-        error,
-    } = await supabase.auth.getSession();
+import { useEffect, useState } from "react";
+import { supabaseClient } from "@/lib/ai/supabaseClient";
+import AIHome from "./AIHome"; // il tuo componente client
 
-    const user = session?.user || null;
+export default function AIPage() {
+    const supabase = supabaseClient();
+    const [ready, setReady] = useState(false);
+    const [userEmail, setUserEmail] = useState("");
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const { data } = await supabase.auth.getUser();
+                if (!data?.user) {
+                    // non loggato → porta al login
+                    window.location.replace("/login?next=/ai");
+                    return;
+                }
+                setUserEmail(data.user.email || "");
+            } catch {
+                // in caso di errore, manda comunque al login
+                window.location.replace("/login?next=/ai");
+                return;
+            }
+            setReady(true);
+        })();
+    }, [supabase]);
+
+    if (!ready) {
+        return (
+            <div className="max-w-4xl mx-auto pt-24 px-6">
+                <p>Caricamento…</p>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto pt-24 px-6">
-            <h1 className="text-3xl font-semibold mb-4">Le tue chat</h1>
-
-            {user ? (
+            <h1 className="text-3xl font-semibold mb-2">Le tue chat</h1>
+            {userEmail && (
                 <p className="text-gray-600 mb-6">
-                    Benvenuto, <strong>{user.email}</strong>
+                    Benvenuto, <strong>{userEmail}</strong>
                 </p>
-            ) : (
-                <div className="mb-6 rounded border border-amber-300 bg-amber-50 p-3 text-amber-800">
-                    Nessuna sessione trovata. Se vedi questo messaggio, il middleware non
-                    ha intercettato l’accesso non autenticato.
-                </div>
             )}
-
-            {/* Componente client che gestisce la logica AI */}
             <AIHome />
         </div>
     );
