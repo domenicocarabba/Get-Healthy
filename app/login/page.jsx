@@ -1,114 +1,75 @@
 "use client";
-
-import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { supabaseClient } from "@/lib/ai/supabaseClient";
-
-function safeNext(raw) {
-    const bad = ["/login", "/signup", "/auth/callback"];
-    try {
-        const n = raw || "/ai?open=chat";
-        const clean = n.split("#")[0];
-        const path = clean.split("?")[0];
-        if (bad.includes(path)) return "/ai?open=chat";
-        return clean.startsWith("/") ? clean : "/ai?open=chat";
-    } catch {
-        return "/ai?open=chat";
-    }
-}
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
+    const supabase = supabaseBrowser();
+    const router = useRouter();
     const search = useSearchParams();
-    const sp = supabaseClient();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
+    const [err, setErr] = useState("");
     const [loading, setLoading] = useState(false);
 
-    const nextUrl = useMemo(() => {
-        const n = search.get("next");
-        const r = search.get("redirect");
-        return safeNext(decodeURIComponent(n || r || "/ai?open=chat"));
-    }, [search]);
-
-    async function handleLogin(e) {
+    async function signIn(e) {
         e.preventDefault();
-        setError("");
+        setErr("");
         setLoading(true);
 
-        try {
-            const { error } = await sp.auth.signInWithPassword({
-                email: email.trim(),
-                password,
-            });
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
 
-            if (error) {
-                const msg = (error.message || "").toLowerCase();
-                setError(
-                    msg.includes("confirm")
-                        ? "Devi prima confermare l’email dal link che ti abbiamo inviato."
-                        : error.message || "Credenziali non valide."
-                );
-                return;
-            }
-
-            // forza subito i token e VAI
-            await sp.auth.refreshSession();
-            const dest = nextUrl || "/ai?open=chat";
-            try {
-                window.location.assign(dest);
-            } catch {
-                window.location.href = dest;
-            }
-            setTimeout(() => {
-                if (location.pathname === "/login") window.location.href = dest;
-            }, 800);
-        } catch {
-            setError("Errore di rete. Riprova.");
-        } finally {
+        if (error) {
+            setErr(error.message);
             setLoading(false);
+            return;
         }
+
+        // Verifica che la sessione sia salvata
+        const { data: sess } = await supabase.auth.getSession();
+        console.log("SESSION AFTER LOGIN", sess?.session);
+
+        // Se la sessione esiste, reindirizza
+        const next = decodeURIComponent(search.get("next") || "/ai");
+        router.push(next);
     }
 
     return (
         <div className="max-w-md mx-auto pt-24 px-6">
             <h1 className="text-2xl font-semibold mb-6">Accedi</h1>
-
-            <form onSubmit={handleLogin} className="grid gap-3">
+            <form onSubmit={signIn} className="grid gap-3">
                 <input
-                    type="email"
                     className="border p-2 rounded"
                     placeholder="Email"
+                    type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    autoComplete="email"
                 />
                 <input
-                    type="password"
                     className="border p-2 rounded"
                     placeholder="Password"
+                    type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    autoComplete="current-password"
                 />
-
-                {error && <p className="text-red-600 text-sm">{error}</p>}
-
                 <button
                     type="submit"
                     disabled={loading}
-                    className="bg-black text-white rounded p-2 disabled:opacity-60"
+                    className="bg-black text-white py-2 rounded hover:bg-gray-800 transition"
                 >
-                    {loading ? "Accesso..." : "Entra"}
+                    {loading ? "Accesso in corso..." : "Entra"}
                 </button>
+                {err && <p className="text-red-600 text-sm">{err}</p>}
             </form>
-
-            <p className="mt-4 text-sm">
+            <p className="mt-3 text-sm">
                 Non hai un account?{" "}
-                <a className="underline" href={`/signup?next=${encodeURIComponent(nextUrl)}`}>
+                <a href="/register" className="underline text-blue-600">
                     Registrati
                 </a>
             </p>

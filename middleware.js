@@ -1,32 +1,45 @@
 import { NextResponse } from "next/server";
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req) {
     const res = NextResponse.next();
-    const supabase = createMiddlewareClient({ req, res });
 
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+            cookies: {
+                get: (key) => req.cookies.get(key)?.value,
+            },
+        }
+    );
 
-    const url = req.nextUrl;
-    const pathname = url.pathname;
-    const search = url.search || "";
+    const { data } = await supabase.auth.getSession();
+    const session = data?.session;
 
-    const isProtected = pathname.startsWith("/ai") || pathname.startsWith("/account");
+    const path = req.nextUrl.pathname;
+    const isAuthPage = path.startsWith("/login");
+    const wantsAI = path.startsWith("/ai");
 
-    // Non loggato → manda al login con next, MAI altro.
-    if (!session && isProtected) {
-        const loginUrl = url.clone();
-        loginUrl.pathname = "/login";
-        loginUrl.searchParams.set("next", pathname + search);
-        return NextResponse.redirect(loginUrl);
+    // Se non loggato e prova ad accedere a /ai → redirect al login
+    if (!session && wantsAI) {
+        const redirectUrl = req.nextUrl.clone();
+        redirectUrl.pathname = "/login";
+        redirectUrl.searchParams.set("next", path);
+        return NextResponse.redirect(redirectUrl);
     }
 
-    // Altrimenti non fare null'altro.
+    // Se già loggato e prova ad accedere al login → redirect ad /ai
+    if (session && isAuthPage) {
+        const redirectUrl = req.nextUrl.clone();
+        redirectUrl.pathname = "/ai";
+        return NextResponse.redirect(redirectUrl);
+    }
+
     return res;
 }
 
+// Pagine a cui il middleware si applica
 export const config = {
-    matcher: ["/ai/:path*", "/account/:path*"], // 🔒 SOLO aree private
+    matcher: ["/ai", "/login"],
 };
