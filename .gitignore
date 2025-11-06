@@ -1,0 +1,16 @@
+# Node / Next.js
+node_modules
+.next
+.out
+.vercel
+dist
+build
+coverage
+.turbo
+
+# Env / OS / editor
+.env*
+!.env.example
+.DS_Store
+.vscode
+vertex-key.json
